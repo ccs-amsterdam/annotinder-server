@@ -1,0 +1,1 @@
+from amcat4annotator.annotator import app_annotator

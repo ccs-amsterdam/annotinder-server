@@ -105,8 +105,15 @@ def set_annotation(job_id, unit_id):
         abort(404)  # unit did not exist or was not integer
     if "annotations" not in unit:
         unit["annotations"] = {}
-    unit["annotations"].append({'user': user, 'annotation':annotations})
-    # unit["annotations"][user] = annotations
+
+    # finding the list of coders
+    coders = set([annotation['user'] for annotation in unit.get("annotations", [])])
+    if user not in coders: # if this is the first time the user comes in
+        unit["annotations"].append({'user': user, 'annotation': annotations})
+    elif user  in coders:
+        for item in unit["annotations"]:
+            if (item['user'] == user):
+                item.update({"annotation": annotations}) # updating the annotation of that user
     es.index(INDEX, id=job_id, body=job)
     return make_response('', 204)
 

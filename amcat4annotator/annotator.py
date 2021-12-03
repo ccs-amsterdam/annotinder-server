@@ -105,7 +105,8 @@ def set_annotation(job_id, unit_id):
         abort(404)  # unit did not exist or was not integer
     if "annotations" not in unit:
         unit["annotations"] = {}
-    unit["annotations"][user] = annotations
+    unit["annotations"].append({'user': user, 'annotation':annotations})
+    # unit["annotations"][user] = annotations
     es.index(INDEX, id=job_id, body=job)
     return make_response('', 204)
 

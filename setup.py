@@ -22,6 +22,7 @@ setup(
         "Flask-HTTPAuth",
         "flask-cors",
         "elasticsearch",
+        "bcrypt",
     ],
     extras_require={
         'dev': [

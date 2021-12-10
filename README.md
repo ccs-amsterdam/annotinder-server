@@ -6,7 +6,7 @@ This is a short document describing the various API calls across CCS-Annotator m
 ## Between CCS-Annotator Manager and CCS-Annotator backend
 
 ### postCodingjob
-"""  
+``` 
 endpoint: $host$/codingjob  
 method: POST  
 Posting codingjobs to annotation backend. Backend creates and stores the codingjob  
@@ -18,7 +18,7 @@ POST data should be json:
     # ...
   ]
  }
-"""
+```
 
 (where `..blob..` means that the annotator backend does not inspect these json fields, i.e. they are annotator-implementation specific
 

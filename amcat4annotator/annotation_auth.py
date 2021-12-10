@@ -3,7 +3,6 @@ import logging
 from flask import Blueprint, g, request, jsonify
 from flask_httpauth import HTTPBasicAuth, HTTPTokenAuth, MultiAuth
 import bcrypt
-from amcat4annotator.common import _get_codingjob, _add_user, hash_password, _user_exists
 from itsdangerous import TimedJSONWebSignatureSerializer, SignatureExpired, BadSignature
 from urllib.parse import urlparse
 

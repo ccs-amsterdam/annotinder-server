@@ -1,5 +1,4 @@
 from flask import Blueprint, request, abort, make_response
-from amcat4annotator.common import _get_codingjob, _check_annotations_users, _check_annotations_index, _create_codingjob
 
 from elasticsearch import Elasticsearch
 es = Elasticsearch()
@@ -43,8 +42,6 @@ def create_job():
     if {"title", "codebook", "units"} - set(job.keys()):
         return make_response({"error": "Codingjob should have title, codebook and units keys"}, 400)
 
-    _check_annotations_index()
-    _check_annotations_users()
     job_id = _create_codingjob(job)
     return make_response(dict(id=job_id), 201)
 
@@ -55,8 +52,6 @@ def get_job(id):
     """
     Return a single coding job definition
     """
-    _check_annotations_index()
-    _check_annotations_users()
     return _get_codingjob(id)
 
 
@@ -116,7 +111,3 @@ def set_annotation(job_id, unit_id):
                 item.update({"annotation": annotations}) # updating the annotation of that user
     es.index(INDEX, id=job_id, body=job)
     return make_response('', 204)
-
-# creating the USERS index by default
-_check_annotations_users()
-

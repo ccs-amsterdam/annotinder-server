@@ -3,6 +3,17 @@ import bcrypt
 from elasticsearch import Elasticsearch
 es = Elasticsearch()
 
+ES_MAPPINGS = {
+
+    "properties": {
+      "codebook":    { "type": "object", "enabled": False },
+      "provenance":    { "type": "object", "enabled": False },
+      "rules":    { "type": "object", "enabled": False },
+      "units":    { "type": "object", "enabled": False }  # TODO: index annotations, maybe separate from units?
+}}
+
+
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
@@ -12,7 +23,7 @@ def _user_exists(email:str) -> bool:
 def _check_annotations_index():
     """ check the annotation_index exists, create if not """
     if not es.indices.exists(INDEX):
-        es.indices.create(INDEX)
+        es.indices.create(INDEX, body={"mappings": ES_MAPPINGS})
 
 def _check_annotations_users():
     """ check the annotation_users exists, create if not """

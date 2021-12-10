@@ -104,7 +104,7 @@ def set_annotation(job_id, unit_id):
     except (ValueError, IndexError):
         abort(404)  # unit did not exist or was not integer
     if "annotations" not in unit:
-        unit["annotations"] = {}
+        unit["annotations"] = []
 
     # finding the list of coders
     coders = set([annotation['user'] for annotation in unit.get("annotations", [])])

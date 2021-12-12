@@ -8,9 +8,6 @@ from urllib.parse import urlparse
 
 app_annotator_auth = Blueprint('app_annotator_auth', __name__)
 
-from elasticsearch import Elasticsearch
-es = Elasticsearch()
-
 basic_auth = HTTPBasicAuth()
 token_auth = HTTPTokenAuth()
 multi_auth = MultiAuth(basic_auth, token_auth)

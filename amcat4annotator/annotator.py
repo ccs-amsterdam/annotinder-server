@@ -1,7 +1,5 @@
 from flask import Blueprint, request, abort, make_response
 
-from elasticsearch import Elasticsearch
-es = Elasticsearch()
 
 app_annotator = Blueprint('app_annotator', __name__)
 

@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from enum import Enum
 from typing import List, Iterable, Optional
@@ -9,12 +10,13 @@ import logging
 
 STATUS = Enum('Status', ['NOT_STARTED', 'IN_PROGRESS', 'DONE', 'SKIPPED'])
 
-# IF we're running nose tests, we want an in-memory db
-if 'nose' in sys.modules.keys():
-    logging.warning("I think you're unit testing: using in-memory db")
-    db = SqliteDatabase(':memory:', pragmas={'foreign_keys': 1})
-else:
-    db = SqliteDatabase('amcat4annotator.db', pragmas={'foreign_keys': 1})
+db_name = os.environ.get("ANNOTATOR_DB_NAME")
+if not db_name:
+    logging.info("Database not specified, using in-memory db. "
+                 "Specify ANNOTATOR_DB_NAME environment variable if required")
+    db_name = ":memory:"
+db = SqliteDatabase(db_name, pragmas={'foreign_keys': 1})
+
 
 class JSONField(TextField):
     def db_value(self, value):
@@ -36,7 +38,7 @@ class CodingJob(Model):
         database = db
 
 
-def create_codingjob(title: str, codebook: dict, provenance: dict, rules: dict, units: List[dict]) -> CodingJob:
+def create_codingjob(title: str, codebook: dict, provenance: dict, rules: dict, units: List[dict]) -> int:
     job = CodingJob.create(title=title, codebook=codebook, rules=rules, provenance=provenance)
     Unit.insert_many(
         [{'codingjob': job, 'unit': u['unit']} for u in units]
@@ -45,7 +47,7 @@ def create_codingjob(title: str, codebook: dict, provenance: dict, rules: dict, 
 
 class Unit(Model):
     id = AutoField()
-    codingjob = ForeignKeyField(CodingJob)
+    codingjob = ForeignKeyField(CodingJob, on_delete='CASCADE')
     unit = JSONField()
     gold = BooleanField(default=False)
     status = CharField(max_length=64, default=STATUS.NOT_STARTED.name)
@@ -64,7 +66,7 @@ class User(Model):
 
 class Annotation(Model):
     id = AutoField()
-    unit = ForeignKeyField(Unit)
+    unit = ForeignKeyField(Unit, on_delete='CASCADE')
     coder = ForeignKeyField(User)
     annotation = JSONField()
     #TODO add status
@@ -103,9 +105,5 @@ def get_next_unit(codingjob_id: int, coder: str) -> Optional[Unit]:
         return units[0]
 
 
-
-
-
-
-def initialize_if_needed():
-    db.create_tables([CodingJob, Unit, Annotation, User])
+#TODO: is it good practice to always call this on import?
+db.create_tables([CodingJob, Unit, Annotation, User])

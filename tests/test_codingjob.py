@@ -1,7 +1,6 @@
-from nose.tools import assert_true, assert_equal, assert_in, assert_is_none
+import pytest
 
-from amcat4annotator.db import create_codingjob, get_units, CodingJob, User, set_annotation, Annotation, \
-    get_next_unit
+from amcat4annotator.db import create_codingjob, get_units, CodingJob, User, set_annotation, Annotation, get_next_unit
 
 UNITS = [{"unit": {"text": "unit1"}},
          {"unit": {"text": "unit2"}}]
@@ -9,49 +8,46 @@ CODEBOOK = {"foo": "bar"}
 PROVENANCE = {"bar": "foo"}
 RULES = {"ruleset": "crowdcoding"}
 
-def _create_codingjob():
-    return create_codingjob(title="test", codebook=CODEBOOK, provenance=PROVENANCE, units=UNITS, rules=RULES).id
+@pytest.fixture()
+def job():
+    job = create_codingjob(title="test", codebook=CODEBOOK, provenance=PROVENANCE, units=UNITS, rules=RULES).id
+    yield job
+    CodingJob.delete_by_id(job)
 
 
-def test_post_get_codingjob():
-    id = _create_codingjob()
-    job = CodingJob.get_by_id(id)
-    assert_equal(job.codebook['foo'],  'bar')
+def test_codingjob(job: int):
+    job2 = CodingJob.get_by_id(job)
+    assert job2.codebook['foo'] == 'bar'
 
 
-def test_get_units():
-    id = _create_codingjob()
-    retrieved_units = list(get_units(id))
+def test_get_units(job: int):
+    retrieved_units = list(get_units(job))
     print(retrieved_units[0].unit)
-    assert_equal(len(UNITS), len(retrieved_units))
-    assert_equal({u['unit']['text'] for u in UNITS},
-                 {u.unit['text'] for u in retrieved_units})
+    assert len(UNITS) == len(retrieved_units)
+    assert {u['unit']['text'] for u in UNITS} == {u.unit['text'] for u in retrieved_units}
 
 
-def test_annotate():
-    id = _create_codingjob()
-    unit = get_units(id)[0]
+def test_annotate(job: int):
+    unit = get_units(job)[0]
 
     #TODO Create methods for creating user, retrieving annotations?
     c = User.create(email="a@b.c")
     a = set_annotation(unit.id, c.email, {"foo": "bar"})
-    assert_equal(Annotation.get_by_id(a.id).annotation['foo'], 'bar')
+    assert Annotation.get_by_id(a.id).annotation['foo'] == 'bar'
     a2 = set_annotation(unit.id, c.email, {"foo": "baz"})
-    assert_equal(a.id, a2.id)
-    assert_equal(Annotation.get_by_id(a.id).annotation['foo'], 'baz')
+    assert a.id == a2.id
+    assert Annotation.get_by_id(a.id).annotation['foo'] == 'baz'
 
 
-def test_get_next_unit():
-    id = _create_codingjob()
+def test_get_next_unit(job: int):
     c = User.create(email="a@b.c")
-    u = get_next_unit(id, c.email)
-    assert_in(u.unit['text'], {"unit1", "unit2"})
+    u = get_next_unit(job, c.email)
+    assert u.unit['text'] in {"unit1", "unit2"}
     set_annotation(u.id, c.email, {})
-    u2 = get_next_unit(id, c.email)
-    assert_equal({u.unit['text'], u2.unit['text']},
-                 {"unit1", "unit2"})
+    u2 = get_next_unit(job, c.email)
+    assert {u.unit['text'], u2.unit['text']} == {"unit1", "unit2"}
     set_annotation(u2.id, c.email, {})
-    u3 = get_next_unit(id, c.email)
-    assert_is_none(u3)
+    u3 = get_next_unit(job, c.email)
+    assert u3 is None
 
 

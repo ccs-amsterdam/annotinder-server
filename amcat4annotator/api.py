@@ -1,47 +1,44 @@
-from flask import Blueprint, request, abort, make_response
+from flask import Blueprint, request, abort, make_response, jsonify
 
+from amcat4annotator.db import create_codingjob, Unit, CodingJob
 
 app_annotator = Blueprint('app_annotator', __name__)
 
 from amcat4annotator.annotation_auth import multi_auth
 
-"""
-A coding job consists of the following information:
-{
- "config": {
-   "rules": ..,
-   ..
- },
- "codebook": ..,
- "units": [{
-     "content": ..,
-     "annotations": {"user_id": .., ..}  
-   }, ... ]
-}
-
-The codebook is an arbitrary json object that is used by the coding interface.
-Similarly, the content and annotations fields of units are arbitrary json objects
-used by the coding interface and researcher.
-
-The config dict is used by the server to control which units to serve for annotation,
-how to authenticate coders, and whether to post the results back to a (e.g. AmCAT) server.  
-"""
-
-INDEX = "amcat4_annotations"
-USERS = "annotations_users"
-
 @app_annotator.route("/codingjob", methods=['POST'])
 @multi_auth.login_required
 def create_job():
     """
-    Create a new codingjob. Body should be json adhering to structure above
+    Create a new codingjob. Body should be json structured as follows:
+
+     {
+      "title": <string>,
+      "codebook": {.. blob ..},
+      "rules": {
+        "ruleset": <string>, .. additional options ..
+      },
+      "units": [
+        {"unit": {.. blob ..}, "gold": true|false},
+        ..
+      ],
+      "provenance": {.. blob ..},  # optional
+     }
+
+    Where ..blob.. indicates that this is not processed by the backend, so can be annotator specific.
+    See the annotator documentation for additional informations.
+
+    The rules distribute how units should be distributed, how to deal with quality control, etc.
+    The ruleset name specifies the class of rules to be used (currently "crowd" or "expert").
+    Depending on the ruleset, additional options can be given.
+    See the rules documentation for additional information
     """
     job = request.get_json(force=True)
-    if {"title", "codebook", "units"} - set(job.keys()):
-        return make_response({"error": "Codingjob should have title, codebook and units keys"}, 400)
-
-    job_id = _create_codingjob(job)
-    return make_response(dict(id=job_id), 201)
+    if {"title", "codebook", "units", "rules"} - set(job.keys()):
+        return make_response({"error": "Codinjob is missing keys"}, 400)
+    job = create_codingjob(codebook=job['codebook'], provenance=job.get('provenance'),
+                           rules=job['rules'], units=job['unts'])
+    return make_response(dict(id=job.id), 201)
 
 
 @app_annotator.route("/codingjob/<id>", methods=['GET'])
@@ -50,7 +47,18 @@ def get_job(id):
     """
     Return a single coding job definition
     """
-    return _get_codingjob(id)
+    job = CodingJob.get_or_none(CodingJob.id == id)
+    if not job:
+        abort(404)
+    units = (Unit.select(Unit.id, Unit.gold, Unit.status, Unit.unit, Unit.status)
+             .where(Unit.codingjob==job).tuples().dicts())
+    return jsonify({
+        "title": job.title,
+        "codebook": job.codebook,
+        "provenance": job.provenance,
+        "rules": job.rules,
+        "units": units
+    })
 
 
 @app_annotator.route("/codingjob/<id>/codebook", methods=['GET'])

@@ -1,9 +1,13 @@
 import json
 import sys
+from enum import Enum
 from typing import List, Iterable, Optional
 
-from peewee import Model, CharField, IntegerField, SqliteDatabase, AutoField, TextField, ForeignKeyField, DoesNotExist
+from peewee import Model, CharField, IntegerField, SqliteDatabase, AutoField, TextField, ForeignKeyField, DoesNotExist, \
+    BooleanField
 import logging
+
+STATUS = Enum('Status', ['NOT_STARTED', 'IN_PROGRESS', 'DONE', 'SKIPPED'])
 
 # IF we're running nose tests, we want an in-memory db
 if 'nose' in sys.modules.keys():
@@ -23,32 +27,28 @@ class JSONField(TextField):
 
 class CodingJob(Model):
     id = AutoField()
+    title = CharField()
     codebook = JSONField()
     provenance = JSONField()
+    rules = JSONField()
 
     class Meta:
         database = db
 
 
-def create_codingjob(codebook: dict, provenance: dict, units: List[dict]) -> CodingJob:
-    job = CodingJob.create(codebook=codebook, provenance=provenance)
+def create_codingjob(title: str, codebook: dict, provenance: dict, rules: dict, units: List[dict]) -> CodingJob:
+    job = CodingJob.create(title=title, codebook=codebook, rules=rules, provenance=provenance)
     Unit.insert_many(
         [{'codingjob': job, 'unit': u['unit']} for u in units]
     ).execute()
     return job
 
-
-def get_codingjob(codingjob_id: int) -> Optional[CodingJob]:
-    try:
-        return CodingJob.get_by_id(codingjob_id)
-    except DoesNotExist:
-        return None
-
-
 class Unit(Model):
     id = AutoField()
     codingjob = ForeignKeyField(CodingJob)
     unit = JSONField()
+    gold = BooleanField(default=False)
+    status = CharField(max_length=64, default=STATUS.NOT_STARTED.name)
 
     class Meta:
         database = db

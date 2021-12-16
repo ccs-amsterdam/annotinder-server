@@ -1,21 +1,21 @@
 from nose.tools import assert_true, assert_equal, assert_in, assert_is_none
 
-from amcat4annotator.db import create_codingjob, get_units, get_codingjob, User, set_annotation, Annotation, \
+from amcat4annotator.db import create_codingjob, get_units, CodingJob, User, set_annotation, Annotation, \
     get_next_unit
 
 UNITS = [{"unit": {"text": "unit1"}},
          {"unit": {"text": "unit2"}}]
 CODEBOOK = {"foo": "bar"}
 PROVENANCE = {"bar": "foo"}
-
+RULES = {"ruleset": "crowdcoding"}
 
 def _create_codingjob():
-    return create_codingjob(CODEBOOK, PROVENANCE, UNITS).id
+    return create_codingjob(title="test", codebook=CODEBOOK, provenance=PROVENANCE, units=UNITS, rules=RULES).id
 
 
 def test_post_get_codingjob():
     id = _create_codingjob()
-    job = get_codingjob(id)
+    job = CodingJob.get_by_id(id)
     assert_equal(job.codebook['foo'],  'bar')
 
 
@@ -55,5 +55,3 @@ def test_get_next_unit():
     assert_is_none(u3)
 
 
-def test_get_codingjobs_dne():
-    assert_equal(get_codingjob(-1), None)

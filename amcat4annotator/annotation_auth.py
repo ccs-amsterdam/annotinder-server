@@ -2,7 +2,6 @@ import os, json, time
 import logging
 from flask import Blueprint, g, request, jsonify
 from flask_httpauth import HTTPBasicAuth, HTTPTokenAuth, MultiAuth
-import bcrypt
 from itsdangerous import TimedJSONWebSignatureSerializer, SignatureExpired, BadSignature
 from urllib.parse import urlparse
 

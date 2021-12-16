@@ -1,2 +1,2 @@
-from amcat4annotator.annotator import app_annotator
+from amcat4annotator.api import app_annotator
 from amcat4annotator.annotation_auth import app_annotator_auth

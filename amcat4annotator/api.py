@@ -104,6 +104,7 @@ def get_next_unit(id):
     Retrieve a single unit to be coded. Currently, the next uncoded unit
     """
     #TODO: authenticate the user (e.g. using bearer token)
+    #TODO: implement rules
     job = CodingJob.get_or_none(CodingJob.id == id)
     if not job:
         abort(404)
@@ -111,43 +112,21 @@ def get_next_unit(id):
              .where(Unit.codingjob == job).tuples().dicts())
     return jsonify({'id': -1, 'unit': units[0]})
 
-    best = None  # (i, min_n_coded, unit)
-    for i, unit in enumerate(job['units']):
-        coders = set([annotation['user'] for annotation in unit.get("annotations", [])])
-        # coders = set(unit.get("annotations", []).keys())
-        if user not in coders:
-            if best is None or len(coders) < best[0]:
-                best = len(coders), i, unit
-    if best:
-        return {'id': best[1], 'unit': best[2]}
-    abort(404)
+@app_annotator.route("/codingjob/<job_id>/unit/<unit_id>", methods=['GET'])
+def get_unit(job_id, unit_id):
+    job = CodingJob.get_or_none(CodingJob.id == job_id)
+    if not job:
+        abort(404)
+    units = (Unit.select(Unit.id, Unit.gold, Unit.status, Unit.unit, Unit.status)
+             .where(Unit.codingjob == job).tuples().dicts())
+    return jsonify({'id': -1, 'unit': units[0]})
+
 
 @app_annotator.route("/codingjob/<job_id>/unit/<unit_id>/annotation", methods=['POST'])
 # @multi_auth.login_required
 def set_annotation(job_id, unit_id):
     """Set the annotations for a specific unit"""
     #TODO: authenticate the user (e.g. using bearer token)
-    user = request.args.get('user')
-    if not user:
-        abort(401)
-    job = _get_codingjob(job_id)
-    annotations = request.get_json(force=True)
-    try:
-        unit = job["units"][int(unit_id)]
-    except (ValueError, IndexError):
-        abort(404)  # unit did not exist or was not integer
-    if "annotations" not in unit:
-        unit["annotations"] = []
-
-    # finding the list of coders
-    coders = set([annotation['user'] for annotation in unit.get("annotations", [])])
-    if user not in coders: # if this is the first time the user comes in
-        unit["annotations"].append({'user': user, 'annotation': annotations})
-    elif user  in coders:
-        for item in unit["annotations"]:
-            if (item['user'] == user):
-                item.update({"annotation": annotations}) # updating the annotation of that user
-    es.index(INDEX, id=job_id, body=job)
     return make_response('', 204)
 
 

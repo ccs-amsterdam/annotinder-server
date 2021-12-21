@@ -47,7 +47,7 @@ def create_job():
     job = request.get_json(force=True)
     if {"title", "codebook", "units", "rules"} - set(job.keys()):
         return make_response({"error": "Codinjob is missing keys"}, 400)
-    job = create_codingjob(codebook=job['codebook'], provenance=job.get('provenance'),
+    job = create_codingjob(title = job['title'], codebook=job['codebook'], provenance=job.get('provenance'),
                            rules=job['rules'], units=job['units'])
     return make_response(dict(id=job.id), 201)
 

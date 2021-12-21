@@ -72,20 +72,29 @@ def get_job(id):
     })
 
 
-@app_annotator.route("/token/", methods=['GET'])
-#@multi_auth.login_required
-def get_token(expiration: int = None):
-    #s = TimedJSONWebSignatureSerializer(SECRET_KEY, expires_in=expiration)
-    #g.current_user['token'] = s.dumps({'email': g.current_user['email']})
-    #return jsonify({"token": g.current_user['token'].decode('ascii')})
-    return jsonify({"token": "hetbadisbestgroot"})
 
 
 @app_annotator.route("/codingjob/<id>/codebook", methods=['GET'])
 @multi_auth.login_required
 def get_codebook(id):
-    job = _get_codingjob(id)
-    return job['codebook']
+    job = CodingJob.get_or_none(CodingJob.id == id)
+    if not job:
+        abort(404)
+    return jsonify(job.codebook)
+
+
+@app_annotator.route("/codingjob/<id>/progress", methods=['GET'])
+@multi_auth.login_required
+def get_codebook(id):
+    job = CodingJob.get_or_none(CodingJob.id == id)
+    if not job:
+        abort(404)
+    return jsonify({
+        'n_coded': 0,
+        'n_total': 100,
+        'seek_backwards': True,
+        'seek_forwards': False,
+    })
 
 
 @app_annotator.route("/codingjob/<id>/unit", methods=['GET'])
@@ -95,10 +104,13 @@ def get_next_unit(id):
     Retrieve a single unit to be coded. Currently, the next uncoded unit
     """
     #TODO: authenticate the user (e.g. using bearer token)
-    user = request.args.get('user')
-    if not user:
-        abort(401)
-    job = _get_codingjob(id)
+    job = CodingJob.get_or_none(CodingJob.id == id)
+    if not job:
+        abort(404)
+    units = (Unit.select(Unit.id, Unit.gold, Unit.status, Unit.unit, Unit.status)
+             .where(Unit.codingjob == job).tuples().dicts())
+    return jsonify({'id': -1, 'unit': units[0]})
+
     best = None  # (i, min_n_coded, unit)
     for i, unit in enumerate(job['units']):
         coders = set([annotation['user'] for annotation in unit.get("annotations", [])])
@@ -137,3 +149,12 @@ def set_annotation(job_id, unit_id):
                 item.update({"annotation": annotations}) # updating the annotation of that user
     es.index(INDEX, id=job_id, body=job)
     return make_response('', 204)
+
+
+@app_annotator.route("/token/", methods=['GET'])
+#@multi_auth.login_required
+def get_token(expiration: int = None):
+    #s = TimedJSONWebSignatureSerializer(SECRET_KEY, expires_in=expiration)
+    #g.current_user['token'] = s.dumps({'email': g.current_user['email']})
+    #return jsonify({"token": g.current_user['token'].decode('ascii')})
+    return jsonify({"token": "hetbadisbestgroot"})

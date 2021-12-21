@@ -61,8 +61,8 @@ class User(Model):
     id = AutoField()
     email = CharField(max_length=512)
     is_admin = BooleanField(default=False)
+    password = CharField(max_length=512, null=True)
 
-    #TODO add password and auth
     class Meta:
         database = db
 

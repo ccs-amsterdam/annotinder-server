@@ -112,6 +112,7 @@ def get_next_unit(id):
              .where(Unit.codingjob == job).tuples().dicts())
     return jsonify({'id': -1, 'unit': units[0]})
 
+
 @app_annotator.route("/codingjob/<job_id>/unit/<index>", methods=['GET'])
 def get_unit(job_id, index):
     job = CodingJob.get_or_none(CodingJob.id == job_id)

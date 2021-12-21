@@ -85,7 +85,7 @@ def get_codebook(id):
 
 @app_annotator.route("/codingjob/<id>/progress", methods=['GET'])
 @multi_auth.login_required
-def get_codebook(id):
+def progress(id):
     job = CodingJob.get_or_none(CodingJob.id == id)
     if not job:
         abort(404)
@@ -112,8 +112,8 @@ def get_next_unit(id):
              .where(Unit.codingjob == job).tuples().dicts())
     return jsonify({'id': -1, 'unit': units[0]})
 
-@app_annotator.route("/codingjob/<job_id>/unit/<unit_id>", methods=['GET'])
-def get_unit(job_id, unit_id):
+@app_annotator.route("/codingjob/<job_id>/unit/<index>", methods=['GET'])
+def get_unit(job_id, index):
     job = CodingJob.get_or_none(CodingJob.id == job_id)
     if not job:
         abort(404)

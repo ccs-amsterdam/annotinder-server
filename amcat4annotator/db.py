@@ -15,6 +15,7 @@ if not db_name:
     logging.info("Database not specified, using in-memory db. "
                  "Specify ANNOTATOR_DB_NAME environment variable if required")
     db_name = ":memory:"
+logging.info(db_name)
 db = SqliteDatabase(db_name, pragmas={'foreign_keys': 1})
 
 
@@ -49,7 +50,7 @@ class Unit(Model):
     id = AutoField()
     codingjob = ForeignKeyField(CodingJob, on_delete='CASCADE')
     unit = JSONField()
-    gold = BooleanField(default=False)
+    gold = JSONField(null=True)
     status = CharField(max_length=64, default=STATUS.NOT_STARTED.name)
 
     class Meta:
@@ -59,6 +60,8 @@ class Unit(Model):
 class User(Model):
     id = AutoField()
     email = CharField(max_length=512)
+    is_admin = BooleanField(default=False)
+
     #TODO add password and auth
     class Meta:
         database = db

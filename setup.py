@@ -22,7 +22,7 @@ setup(
         "Flask-HTTPAuth",
         "flask-cors",
         "peewee",
-        "bcrypt",
+        'authlib'
     ],
     extras_require={
         'dev': [

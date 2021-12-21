@@ -61,6 +61,15 @@ def get_job(id):
     })
 
 
+@app_annotator.route("/token/", methods=['GET'])
+#@multi_auth.login_required
+def get_token(expiration: int = None):
+    #s = TimedJSONWebSignatureSerializer(SECRET_KEY, expires_in=expiration)
+    #g.current_user['token'] = s.dumps({'email': g.current_user['email']})
+    #return jsonify({"token": g.current_user['token'].decode('ascii')})
+    return jsonify({"token": "hetbadisbestgroot"})
+
+
 @app_annotator.route("/codingjob/<id>/codebook", methods=['GET'])
 @multi_auth.login_required
 def get_codebook(id):

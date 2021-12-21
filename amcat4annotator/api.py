@@ -1,10 +1,19 @@
+import logging
+
 from flask import Blueprint, request, abort, make_response, jsonify
+from werkzeug.exceptions import HTTPException
 
 from amcat4annotator.db import create_codingjob, Unit, CodingJob
 
 app_annotator = Blueprint('app_annotator', __name__)
 
 from amcat4annotator.annotation_auth import multi_auth
+
+@app_annotator.errorhandler(HTTPException)
+def bad_request(e):
+    logging.error(str(e))
+    status = e.get_response(request.environ).status_code
+    return jsonify(error=str(e)), status
 
 @app_annotator.route("/codingjob", methods=['POST'])
 @multi_auth.login_required

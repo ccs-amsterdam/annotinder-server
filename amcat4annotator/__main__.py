@@ -50,7 +50,7 @@ def password(args):
         u.save()
         _print_user(u)
     else:
-        ok = auth.check_password(args.password, u.password)
+        ok = auth.verify_password(args.password, u.password)
         print(f"Password {'matched' if ok else 'did not match'}")
 
 

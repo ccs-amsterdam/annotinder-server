@@ -40,9 +40,10 @@ class CodingJob(Model):
 def create_codingjob(title: str, codebook: dict, provenance: dict, rules: dict, units: List[dict]) -> int:
     job = CodingJob.create(title=title, codebook=codebook, rules=rules, provenance=provenance)
     Unit.insert_many(
-        [{'codingjob': job, 'unit': u['unit']} for u in units]
+        [{'codingjob': job, 'unit': u['unit'], 'gold': u.get('gold')} for u in units]
     ).execute()
     return job
+
 
 class Unit(Model):
     id = AutoField()
@@ -68,7 +69,7 @@ class User(Model):
 class Annotation(Model):
     id = AutoField()
     unit = ForeignKeyField(Unit, on_delete='CASCADE')
-    coder = ForeignKeyField(User)
+    coder = ForeignKeyField(User, on_delete='CASCADE')
     annotation = JSONField()
     #TODO add status
     class Meta:

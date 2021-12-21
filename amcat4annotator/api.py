@@ -17,6 +17,13 @@ def bad_request(e):
     return jsonify(error=str(e)), status
 
 
+def _job(job_id: int):
+    job = CodingJob.get_or_none(CodingJob.id == job_id)
+    if not job:
+        abort(404)
+    return job
+
+
 @app_annotator.route("/codingjob", methods=['POST'])
 @multi_auth.login_required
 def create_job():
@@ -62,11 +69,9 @@ def get_job(job_id):
     Return a single coding job definition
     """
     check_admin()
-    job = CodingJob.get_or_none(CodingJob.id == job_id)
-    if not job:
-        abort(404)
-    units = (Unit.select(Unit.id, Unit.gold, Unit.status, Unit.unit, Unit.status)
-             .where(Unit.codingjob==job).tuples().dicts())
+    job = _job(job_id)
+    units = list(Unit.select(Unit.id, Unit.gold, Unit.status, Unit.unit, Unit.status)
+                 .where(Unit.codingjob==job).tuples().dicts().execute())
     return jsonify({
         "title": job.title,
         "codebook": job.codebook,
@@ -76,21 +81,18 @@ def get_job(job_id):
     })
 
 
+
 @app_annotator.route("/codingjob/<job_id>/codebook", methods=['GET'])
 @multi_auth.login_required
 def get_codebook(job_id):
-    job = CodingJob.get_or_none(CodingJob.id == job_id)
-    if not job:
-        abort(404)
+    job = _job(job_id)
     return jsonify(job.codebook)
 
 
 @app_annotator.route("/codingjob/<job_id>/progress", methods=['GET'])
 @multi_auth.login_required
 def progress(job_id):
-    job = CodingJob.get_or_none(CodingJob.id == job_id)
-    if not job:
-        abort(404)
+    job = _job(job_id)
     return jsonify({
         'n_coded': 0,
         'n_total': 100,
@@ -99,17 +101,15 @@ def progress(job_id):
     })
 
 
-@app_annotator.route("/codingjob/<id>/unit", methods=['GET'])
+@app_annotator.route("/codingjob/<job_id>/unit", methods=['GET'])
 @multi_auth.login_required
-def get_next_unit(id):
+def get_next_unit(job_id):
     """
     Retrieve a single unit to be coded. Currently, the next uncoded unit
     """
     #TODO: authenticate the user (e.g. using bearer token)
     #TODO: implement rules
-    job = CodingJob.get_or_none(CodingJob.id == id)
-    if not job:
-        abort(404)
+    job = _job(job_id)
     units = (Unit.select(Unit.id, Unit.gold, Unit.status, Unit.unit, Unit.status)
              .where(Unit.codingjob == job).tuples().dicts())
     return jsonify({'id': -1, 'unit': units[0]})
@@ -118,9 +118,7 @@ def get_next_unit(id):
 @app_annotator.route("/codingjob/<job_id>/unit/<index>", methods=['GET'])
 @multi_auth.login_required
 def get_unit(job_id, index):
-    job = CodingJob.get_or_none(CodingJob.id == job_id)
-    if not job:
-        abort(404)
+    job = _job(job_id)
     units = (Unit.select(Unit.id, Unit.gold, Unit.status, Unit.unit, Unit.status)
              .where(Unit.codingjob == job).tuples().dicts())
     return jsonify({'id': -1, 'unit': units[0]})
@@ -130,6 +128,7 @@ def get_unit(job_id, index):
 @multi_auth.login_required
 def set_annotation(job_id, unit_id):
     """Set the annotations for a specific unit"""
+    job = _job(job_id)
     #TODO: authenticate the user (e.g. using bearer token)
     return make_response('', 204)
 

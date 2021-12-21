@@ -1,4 +1,6 @@
 import logging
+from typing import Optional
+
 from authlib.jose import JsonWebSignature
 import bcrypt
 from authlib.jose.errors import DecodeError
@@ -21,18 +23,34 @@ def get_token(user: User) -> str:
         key=SECRET_KEY).decode("ascii")
 
 
-def verify_token(token: str) -> User:
-    payload = JsonWebSignature().deserialize_compact(token, SECRET_KEY)
+def verify_token(token: str) -> Optional[User]:
+    """
+    Verify the given token, returning the authenticated User
+
+    If the token is invalid, expired, or the user does not exist, returns None
+    """
+    try:
+        payload = JsonWebSignature().deserialize_compact(token, SECRET_KEY)
+    except DecodeError:
+        return None
+
     email = payload['payload'].decode("utf-8")
-    return User.get(User.email == email)
+    return User.get_or_none(User.email == email)
 
 
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("ascii")
 
 
-def check_password(password: str, hashed_password: str) -> bool:
-    return bcrypt.checkpw(password.encode("utf-8"), hashed_password.encode("ascii"))
+def verify_password(user: User, password: str) -> bool:
+    if not user.password:
+        return False
+    return bcrypt.checkpw(password.encode("utf-8"), user.password.encode("ascii"))
+
+
+def change_password(user: User, password: str):
+    user.password = hash_password(password)
+    user.save()
 
 
 @basic_auth.verify_password
@@ -40,9 +58,7 @@ def app_verify_password(username, password):
     u = User.get_or_none(User.email == username)
     if not u:
         logging.warning(f"User {u} does not exist")
-    elif not u.password:
-        logging.warning(f"User {u} has no password specified")
-    elif not check_password(password, u.password):
+    elif not verify_password(u, password):
         logging.warning(f"Password for {u} did not match")
     else:
         g.current_user = u
@@ -50,14 +66,10 @@ def app_verify_password(username, password):
 
 
 @token_auth.verify_token
-def app_verify_token(token):
-    try:
-        u = verify_token(token)
-    except DecodeError as e:
-        logging.error(f"Invalid token {token!r}: {e}")
-        return
+def app_verify_token(token) -> bool:
+    u = verify_token(token)
     g.current_user = u
-    return True
+    return bool(u)
 
 
 def check_admin():

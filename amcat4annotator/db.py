@@ -12,10 +12,8 @@ STATUS = Enum('Status', ['NOT_STARTED', 'IN_PROGRESS', 'DONE', 'SKIPPED'])
 
 db_name = os.environ.get("ANNOTATOR_DB_NAME")
 if not db_name:
-    logging.info("Database not specified, using in-memory db. "
-                 "Specify ANNOTATOR_DB_NAME environment variable if required")
+    print(f"Note: Using database {db_name}, user ANNOTATOR_DB_NAME to change", file=sys.stderr)
     db_name = ":memory:"
-logging.info(db_name)
 db = SqliteDatabase(db_name, pragmas={'foreign_keys': 1})
 
 

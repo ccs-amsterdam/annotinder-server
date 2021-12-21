@@ -1,19 +1,21 @@
 import logging
 
-from flask import Blueprint, request, abort, make_response, jsonify
+from flask import Blueprint, request, abort, make_response, jsonify, g
 from werkzeug.exceptions import HTTPException
 
+from amcat4annotator import auth
 from amcat4annotator.db import create_codingjob, Unit, CodingJob
+from amcat4annotator.auth import multi_auth, check_admin
 
 app_annotator = Blueprint('app_annotator', __name__)
 
-from amcat4annotator.annotation_auth import multi_auth
 
 @app_annotator.errorhandler(HTTPException)
 def bad_request(e):
     logging.error(str(e))
     status = e.get_response(request.environ).status_code
     return jsonify(error=str(e)), status
+
 
 @app_annotator.route("/codingjob", methods=['POST'])
 @multi_auth.login_required
@@ -44,6 +46,7 @@ def create_job():
     Depending on the ruleset, additional options can be given.
     See the rules documentation for additional information
     """
+    check_admin()
     job = request.get_json(force=True)
     if {"title", "codebook", "units", "rules"} - set(job.keys()):
         return make_response({"error": "Codinjob is missing keys"}, 400)
@@ -52,13 +55,14 @@ def create_job():
     return make_response(dict(id=job.id), 201)
 
 
-@app_annotator.route("/codingjob/<id>", methods=['GET'])
+@app_annotator.route("/codingjob/<job_id>", methods=['GET'])
 @multi_auth.login_required
-def get_job(id):
+def get_job(job_id):
     """
     Return a single coding job definition
     """
-    job = CodingJob.get_or_none(CodingJob.id == id)
+    check_admin()
+    job = CodingJob.get_or_none(CodingJob.id == job_id)
     if not job:
         abort(404)
     units = (Unit.select(Unit.id, Unit.gold, Unit.status, Unit.unit, Unit.status)
@@ -72,21 +76,19 @@ def get_job(id):
     })
 
 
-
-
-@app_annotator.route("/codingjob/<id>/codebook", methods=['GET'])
+@app_annotator.route("/codingjob/<job_id>/codebook", methods=['GET'])
 @multi_auth.login_required
-def get_codebook(id):
-    job = CodingJob.get_or_none(CodingJob.id == id)
+def get_codebook(job_id):
+    job = CodingJob.get_or_none(CodingJob.id == job_id)
     if not job:
         abort(404)
     return jsonify(job.codebook)
 
 
-@app_annotator.route("/codingjob/<id>/progress", methods=['GET'])
+@app_annotator.route("/codingjob/<job_id>/progress", methods=['GET'])
 @multi_auth.login_required
-def progress(id):
-    job = CodingJob.get_or_none(CodingJob.id == id)
+def progress(job_id):
+    job = CodingJob.get_or_none(CodingJob.id == job_id)
     if not job:
         abort(404)
     return jsonify({
@@ -114,6 +116,7 @@ def get_next_unit(id):
 
 
 @app_annotator.route("/codingjob/<job_id>/unit/<index>", methods=['GET'])
+@multi_auth.login_required
 def get_unit(job_id, index):
     job = CodingJob.get_or_none(CodingJob.id == job_id)
     if not job:
@@ -124,17 +127,14 @@ def get_unit(job_id, index):
 
 
 @app_annotator.route("/codingjob/<job_id>/unit/<unit_id>/annotation", methods=['POST'])
-# @multi_auth.login_required
+@multi_auth.login_required
 def set_annotation(job_id, unit_id):
     """Set the annotations for a specific unit"""
     #TODO: authenticate the user (e.g. using bearer token)
     return make_response('', 204)
 
 
-@app_annotator.route("/token/", methods=['GET'])
-#@multi_auth.login_required
-def get_token(expiration: int = None):
-    #s = TimedJSONWebSignatureSerializer(SECRET_KEY, expires_in=expiration)
-    #g.current_user['token'] = s.dumps({'email': g.current_user['email']})
-    #return jsonify({"token": g.current_user['token'].decode('ascii')})
-    return jsonify({"token": "hetbadisbestgroot"})
+@app_annotator.route("/token", methods=['GET'])
+@multi_auth.login_required
+def get_token():
+    return jsonify({"token": auth.get_token(g.current_user)})

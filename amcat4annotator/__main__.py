@@ -45,7 +45,7 @@ def check_token(args):
 def password(args):
     u = User.get(User.email==args.user)
     if args.setpassword:
-        print(f"Setting password for {args.user}")
+        logging.info(f"Setting password for {args.user}")
         u.password = auth.hash_password(args.password)
         u.save()
         _print_user(u)
@@ -88,6 +88,7 @@ p.set_defaults(func=password)
 
 args = parser.parse_args()
 
-logging.basicConfig(level=logging.DEBUG,# if args.verbose else logging.INFO,
+logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                     format='[%(asctime)s %(name)-12s %(levelname)-5s] %(message)s')
+
 args.func(args)

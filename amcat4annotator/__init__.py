@@ -1,2 +1,6 @@
+from flask import Flask
+
 from amcat4annotator.api import app_annotator
-from amcat4annotator.annotation_auth import app_annotator_auth
+
+api = Flask(__name__)
+api.register_blueprint(app_annotator)

@@ -19,7 +19,9 @@ def create_job():
         "ruleset": <string>, .. additional options ..
       },
       "units": [
-        {"unit": {.. blob ..}, "gold": true|false},
+        {"unit": {.. blob ..},
+         "gold": {.. blob ..},  # optional, include correct answer here for gold questions
+        }
         ..
       ],
       "provenance": {.. blob ..},  # optional

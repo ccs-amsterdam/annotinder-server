@@ -65,3 +65,14 @@ def test_set_annotation(client, user, job):
     a = list(Annotation.select().where(Annotation.coder==user.id, Annotation.unit==units[0].id))
     assert len(a) == 1
     assert a[0].annotation == {"foo": "bar"}
+
+
+def test_progress(client, user, job):
+    p = get_json(client,  f'/codingjob/{job}/progress', user=user)
+    assert p['n_total'] == 2
+    assert p['n_coded'] == 0
+    units = list(get_units(job))
+    set_annotation(units[0].id, user.email, {})
+    p = get_json(client,  f'/codingjob/{job}/progress', user=user)
+    assert p['n_coded'] == 1
+

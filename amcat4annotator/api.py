@@ -4,7 +4,7 @@ from flask import Blueprint, request, abort, make_response, jsonify, g
 from werkzeug.exceptions import HTTPException
 
 from amcat4annotator import auth, rules
-from amcat4annotator.db import create_codingjob, Unit, CodingJob, Annotation
+from amcat4annotator.db import create_codingjob, Unit, CodingJob, Annotation, User
 from amcat4annotator.auth import multi_auth, check_admin
 
 app_annotator = Blueprint('app_annotator', __name__)
@@ -135,4 +135,21 @@ def set_annotation(job_id, unit_id):
 @app_annotator.route("/token", methods=['GET'])
 @multi_auth.login_required
 def get_token():
-    return jsonify({"token": auth.get_token(g.current_user)})
+    """
+    Get the token for the current
+    If ?user=email@example.com is specified, get the token for that user (requires admin privilege)
+    If &create=true is specified, create the user if it doesn't exist (otherwise returns 404)
+    """
+    user_email = request.args.get("user")
+    if user_email:
+        check_admin()
+        user = User.get_or_none(User.email == user_email)
+        print("\n???", user_email, user)
+        if not user:
+            if request.args.get("create", "").lower() == "true":
+                user = User.create(email=user_email)
+            else:
+                abort(404)
+    else:
+        user = g.current_user
+    return jsonify({"token": auth.get_token(user)})

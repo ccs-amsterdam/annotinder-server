@@ -16,6 +16,15 @@ def test_get_token(client, user):
     assert auth.verify_token(result['token']) == user
 
 
+def test_get_token_admin(client, user, admin_user):
+    assert get_json(client, '/token', user=user, query_string=dict(user='new@example.com'), expected=401)
+    result = get_json(client, '/token', user=admin_user, query_string=dict(user=user.email), expected=200)
+    assert auth.verify_token(result['token']) == user
+    assert get_json(client, '/token', user=admin_user, query_string=dict(user='new@example.com'), expected=404)
+    result = get_json(client, '/token', user=admin_user, query_string=dict(user="new@example.com", create="true"), expected=200)
+    assert auth.verify_token(result['token']).email == "new@example.com"
+
+
 def test_post_job(client, admin_user):
     job_dict = dict(title="test", codebook=CODEBOOK, rules=RULES, units=UNITS)
     jobid = post_json(client, '/codingjob', data=job_dict, user=admin_user)['id']

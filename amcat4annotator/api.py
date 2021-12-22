@@ -114,6 +114,7 @@ def get_unit(job_id):
     a = list(Annotation.select().where(Annotation.unit == u.id, Annotation.coder == g.current_user.id))
     if a:
         result['annotation'] = a[0].annotation
+        result['status'] = a[0].status
     return jsonify(result)
 
 
@@ -138,9 +139,9 @@ def post_annotation(job_id, unit_id):
     body = request.get_json(force=True)
     if not body:
         abort(400)
-    annotation = body.get('annotation')
-    if not annotation:
+    if not 'annotation' in body:
         abort(400)
+    annotation = body.get('annotation')
     status = body.get('status')
     set_annotation(unit.id, coder=g.current_user.email, annotation=annotation, status=status)
     return make_response('', 204)
@@ -167,3 +168,4 @@ def get_token():
     else:
         user = g.current_user
     return jsonify({"token": auth.get_token(user)})
+

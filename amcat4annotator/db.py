@@ -51,7 +51,6 @@ class Unit(Model):
     codingjob = ForeignKeyField(CodingJob, on_delete='CASCADE')
     unit = JSONField()
     gold = JSONField(null=True)
-    status = CharField(max_length=64, default=STATUS.NOT_STARTED.name)
 
     class Meta:
         database = db
@@ -71,8 +70,9 @@ class Annotation(Model):
     id = AutoField()
     unit = ForeignKeyField(Unit, on_delete='CASCADE')
     coder = ForeignKeyField(User, on_delete='CASCADE')
+    status = CharField(max_length=64, default=STATUS.DONE.name)
     annotation = JSONField()
-    #TODO add status
+
     class Meta:
         database = db
 

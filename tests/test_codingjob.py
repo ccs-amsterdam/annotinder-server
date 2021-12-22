@@ -1,8 +1,9 @@
 import pytest
 
-from amcat4annotator.db import create_codingjob, get_units, CodingJob, User, set_annotation, Annotation, get_next_unit
+from amcat4annotator.db import create_codingjob, get_units, CodingJob, User, set_annotation, Annotation
 
 from tests.conftest import UNITS
+
 
 def test_codingjob(job: int):
     job2 = CodingJob.get_by_id(job)
@@ -24,15 +25,5 @@ def test_annotate(job: int, user: User):
     assert a.id == a2.id
     assert Annotation.get_by_id(a.id).annotation['foo'] == 'baz'
 
-
-def test_get_next_unit(job: int, user: User):
-    u = get_next_unit(job, user.email)
-    assert u.unit['text'] in {"unit1", "unit2"}
-    set_annotation(u.id, user.email, {})
-    u2 = get_next_unit(job, user.email)
-    assert {u.unit['text'], u2.unit['text']} == {"unit1", "unit2"}
-    set_annotation(u2.id, user.email, {})
-    u3 = get_next_unit(job, user.email)
-    assert u3 is None
 
 

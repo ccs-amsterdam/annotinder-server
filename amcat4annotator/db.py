@@ -8,6 +8,7 @@ from peewee import Model, CharField, IntegerField, SqliteDatabase, AutoField, Te
     BooleanField
 import logging
 
+
 STATUS = Enum('Status', ['NOT_STARTED', 'IN_PROGRESS', 'DONE', 'SKIPPED'])
 
 db_name = os.environ.get("ANNOTATOR_DB_NAME")
@@ -91,21 +92,6 @@ def set_annotation(unit_id: int, coder: str, annotation: dict) -> Annotation:
         ann.annotation = annotation
         ann.save()
         return ann
-
-
-
-def get_next_unit(codingjob_id: int, coder: str) -> Optional[Unit]:
-    """Return the next unit to code, or None if coder is done"""
-    #TODO: implement rules / logic
-    c = User.get(User.email == coder)
-    coded = {t[0] for t in Annotation.select(Unit.id).join(Unit).
-        filter(Unit.codingjob == codingjob_id,
-               Annotation.coder == c.id).tuples()}
-    units = list(Unit.select().where(Unit.codingjob == codingjob_id,
-                        Unit.id.not_in(coded)).limit(1).execute())
-    if units:
-        return units[0]
-
 
 #TODO: is it good practice to always call this on import?
 db.create_tables([CodingJob, Unit, Annotation, User])

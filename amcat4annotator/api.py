@@ -3,8 +3,8 @@ import logging
 from flask import Blueprint, request, abort, make_response, jsonify, g
 from werkzeug.exceptions import HTTPException
 
-from amcat4annotator import auth
-from amcat4annotator.db import create_codingjob, Unit, CodingJob
+from amcat4annotator import auth, rules
+from amcat4annotator.db import create_codingjob, Unit, CodingJob, Annotation
 from amcat4annotator.auth import multi_auth, check_admin
 
 app_annotator = Blueprint('app_annotator', __name__)
@@ -81,7 +81,6 @@ def get_job(job_id):
     })
 
 
-
 @app_annotator.route("/codingjob/<job_id>/codebook", methods=['GET'])
 @multi_auth.login_required
 def get_codebook(job_id):
@@ -93,35 +92,29 @@ def get_codebook(job_id):
 @multi_auth.login_required
 def progress(job_id):
     job = _job(job_id)
-    return jsonify({
-        'n_coded': 0,
-        'n_total': 100,
-        'seek_backwards': True,
-        'seek_forwards': False,
-    })
+    return jsonify(rules.get_progress_report(job, g.current_user))
 
 
 @app_annotator.route("/codingjob/<job_id>/unit", methods=['GET'])
 @multi_auth.login_required
-def get_next_unit(job_id):
+def get_unit(job_id):
     """
-    Retrieve a single unit to be coded. Currently, the next uncoded unit
+    Retrieve a single unit to be coded.
+    If ?index=i is specified, seek a specific unit. Otherwise, return the next unit to code
     """
-    #TODO: authenticate the user (e.g. using bearer token)
-    #TODO: implement rules
     job = _job(job_id)
-    units = (Unit.select(Unit.id, Unit.gold, Unit.status, Unit.unit, Unit.status)
-             .where(Unit.codingjob == job).tuples().dicts())
-    return jsonify({'id': -1, 'unit': units[0]})
-
-
-@app_annotator.route("/codingjob/<job_id>/unit/<index>", methods=['GET'])
-@multi_auth.login_required
-def get_unit(job_id, index):
-    job = _job(job_id)
-    units = (Unit.select(Unit.id, Unit.gold, Unit.status, Unit.unit, Unit.status)
-             .where(Unit.codingjob == job).tuples().dicts())
-    return jsonify({'id': -1, 'unit': units[0]})
+    index = request.args.get("index")
+    if index:
+        u = rules.seek_unit(job, g.current_user, index=int(index))
+    else:
+        u = rules.get_next_unit(job, g.current_user)
+    if not u:
+        abort(404)
+    result = {'id': u.id, 'unit': u.unit}
+    a = list(Annotation.select().where(Annotation.unit == u.id, Annotation.coder == g.current_user.id))
+    if a:
+        result['annotation'] = a[0].annotation
+    return jsonify(result)
 
 
 @app_annotator.route("/codingjob/<job_id>/unit/<unit_id>/annotation", methods=['POST'])
@@ -129,7 +122,13 @@ def get_unit(job_id, index):
 def set_annotation(job_id, unit_id):
     """Set the annotations for a specific unit"""
     job = _job(job_id)
-    #TODO: authenticate the user (e.g. using bearer token)
+    annotation = request.get_json(force=True)
+    if not annotation:
+        abort(400)
+    unit = Unit.get_or_none(Unit.id == unit_id)
+    if not unit:
+        abort(404)
+    Annotation.create(unit=unit.id, coder=g.current_user.id, annotation=annotation)
     return make_response('', 204)
 
 

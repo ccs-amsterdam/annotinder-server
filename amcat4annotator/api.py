@@ -4,7 +4,7 @@ from flask import Blueprint, request, abort, make_response, jsonify, g
 from werkzeug.exceptions import HTTPException
 
 from amcat4annotator import auth, rules
-from amcat4annotator.db import create_codingjob, Unit, CodingJob, Annotation, User
+from amcat4annotator.db import create_codingjob, Unit, CodingJob, Annotation, User, STATUS, set_annotation
 from amcat4annotator.auth import multi_auth, check_admin
 
 app_annotator = Blueprint('app_annotator', __name__)
@@ -70,7 +70,7 @@ def get_job(job_id):
     """
     check_admin()
     job = _job(job_id)
-    units = list(Unit.select(Unit.id, Unit.gold, Unit.status, Unit.unit, Unit.status)
+    units = list(Unit.select(Unit.id, Unit.gold, Unit.unit)
                  .where(Unit.codingjob==job).tuples().dicts().execute())
     return jsonify({
         "title": job.title,
@@ -119,16 +119,30 @@ def get_unit(job_id):
 
 @app_annotator.route("/codingjob/<job_id>/unit/<unit_id>/annotation", methods=['POST'])
 @multi_auth.login_required
-def set_annotation(job_id, unit_id):
-    """Set the annotations for a specific unit"""
-    job = _job(job_id)
-    annotation = request.get_json(force=True)
-    if not annotation:
-        abort(400)
+def post_annotation(job_id, unit_id):
+    """
+    Set the annotations for a specific unit
+    POST body should consist of a json object:
+    {
+      "annotation": {..blob..},
+      "status": "DONE"|"IN_PROGRESS"|"SKIPPED"  # optional
+    }
+    """
+    # TODO check if this coder is allowed to set this annotation
     unit = Unit.get_or_none(Unit.id == unit_id)
+    job = _job(job_id)
     if not unit:
         abort(404)
-    Annotation.create(unit=unit.id, coder=g.current_user.id, annotation=annotation)
+    if unit.codingjob != job:
+        abort(400)
+    body = request.get_json(force=True)
+    if not body:
+        abort(400)
+    annotation = body.get('annotation')
+    if not annotation:
+        abort(400)
+    status = body.get('status')
+    set_annotation(unit.id, coder=g.current_user.email, annotation=annotation, status=status)
     return make_response('', 204)
 
 

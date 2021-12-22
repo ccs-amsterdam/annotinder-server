@@ -81,15 +81,21 @@ def get_units(codingjob_id: int) -> Iterable[Unit]:
     return Unit.select().where(Unit.codingjob == codingjob_id)
 
 
-def set_annotation(unit_id: int, coder: str, annotation: dict) -> Annotation:
+def set_annotation(unit_id: int, coder: str, annotation: dict, status: Optional[str] = None) -> Annotation:
     """Create a new annotation or replace an existing annotation"""
     c = User.get(User.email == coder)
+    if status:
+        status = status.upper()
+        assert hasattr(STATUS, status)
+    else:
+        status = STATUS.DONE.name
     try:
         ann = Annotation.get(unit=unit_id, coder=c.id)
     except Annotation.DoesNotExist:
-        return Annotation.create(unit=unit_id, coder=c.id, annotation=annotation)
+        return Annotation.create(unit=unit_id, coder=c.id, annotation=annotation, status=status)
     else:
         ann.annotation = annotation
+        ann.status = status
         ann.save()
         return ann
 

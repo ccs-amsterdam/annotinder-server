@@ -71,10 +71,18 @@ def test_seek_unit(client, user, job):
 def test_set_annotation(client, user, job):
     units = list(get_units(job))
     unit = units[0].id
-    post_json(client, f'/codingjob/{job}/unit/{unit}/annotation', user=user, data={"foo": "bar"}, expected=204, decode=False)
+    post_json(client, f'/codingjob/{job}/unit/{unit}/annotation', user=user, expected=204, decode=False,
+              data={"annotation": [{"foo": "bar"}]})
     a = list(Annotation.select().where(Annotation.coder==user.id, Annotation.unit==units[0].id))
     assert len(a) == 1
-    assert a[0].annotation == {"foo": "bar"}
+    assert a[0].annotation == [{"foo": "bar"}]
+    assert a[0].status == "DONE"
+    post_json(client, f'/codingjob/{job}/unit/{unit}/annotation', user=user, expected=204, decode=False,
+              data={"status": "IN_PROGRESS", "annotation": [{"foo": "baz"}]})
+    a = list(Annotation.select().where(Annotation.coder == user.id, Annotation.unit == units[0].id))
+    assert len(a) == 1
+    assert a[0].annotation == [{"foo": "baz"}]
+    assert a[0].status == "IN_PROGRESS"
 
 
 def test_progress(client, user, job):

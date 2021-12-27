@@ -36,7 +36,7 @@ class RuleSet:
         """
         Return the progress report for this job, including seek permissions
         """
-        n_coded = Annotation.select().join(Unit).where(Unit.codingjob == job.id, Annotation.coder == coder.id).count()
+        n_coded = Annotation.select().join(Unit).where(Unit.codingjob == job.id, Annotation.coder == coder.id, Annotation.status != 'IN_PROGRESS').count()
         return dict(
             n_coded=n_coded,
             n_total=self.n_total(job, coder),
@@ -64,7 +64,16 @@ class RuleSet:
 
 class CrowdCoding(RuleSet):
     def get_next_unit(self, job: CodingJob, coder: User) -> Optional[Unit]:
-        # (1) Is there a unit left that has been coded by no one??
+        # (1) Is there a unit currently IN_PROGRESS?
+        in_progress = list(
+            Unit.select()
+            .join(Annotation, JOIN.LEFT_OUTER)
+            .where(Unit.codingjob == job.id, Annotation.coder == coder.id, Annotation.status == 'IN_PROGRESS')
+            .limit(1).execute())
+        if in_progress:
+            return in_progress[0]
+
+        # (2) Is there a unit left that has been coded by no one??
         uncoded = list(
             Unit.select()
             .join(Annotation, JOIN.LEFT_OUTER)
@@ -73,7 +82,7 @@ class CrowdCoding(RuleSet):
         if uncoded:
             return uncoded[0]
 
-        # (2) select a unit that is uncoded by me, and least coded by anyone else
+        # (3) select a unit that is uncoded by me, and least coded by anyone else
         coded = {t[0] for t in Annotation.select(Unit.id).join(Unit).
             filter(Unit.codingjob == job.id,
                    Annotation.coder == coder.id).tuples()}

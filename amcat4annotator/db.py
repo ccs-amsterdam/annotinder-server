@@ -1,11 +1,12 @@
 import json
 import os
 import sys
+import datetime
 from enum import Enum
 from typing import List, Iterable, Optional
 
-from peewee import Model, CharField, IntegerField, SqliteDatabase, AutoField, TextField, ForeignKeyField, DoesNotExist, \
-    BooleanField
+from peewee import DateTimeField, Model, CharField, IntegerField, SqliteDatabase, AutoField, TextField, ForeignKeyField, DoesNotExist, \
+    BooleanField, fn
 import logging
 
 
@@ -71,6 +72,7 @@ class Annotation(Model):
     unit = ForeignKeyField(Unit, on_delete='CASCADE')
     coder = ForeignKeyField(User, on_delete='CASCADE')
     status = CharField(max_length=64, default=STATUS.DONE.name)
+    modified = DateTimeField(default=datetime.datetime.now())
     annotation = JSONField()
 
     class Meta:
@@ -79,6 +81,25 @@ class Annotation(Model):
 
 def get_units(codingjob_id: int) -> Iterable[Unit]:
     return Unit.select().where(Unit.codingjob == codingjob_id)
+
+def get_user_jobs(user_id: int) -> list:
+    """
+    Retrieve all (active?) jobs
+    """
+    jobs = list(CodingJob.select())
+
+    jobs_with_progress = []
+    for job in jobs:
+        data = {"id": job.id, "title": job.title}
+        data["n_total"] = Unit.select().where(Unit.codingjob == job.id).count()
+
+        annotations = Annotation.select().join(Unit).where(Unit.codingjob == job.id, Annotation.coder == user_id, Annotation.status != 'IN_PROGRESS')
+        data["n_coded"] = annotations.count()
+        data["modified"] = annotations.select(fn.MAX(Annotation.modified)).scalar()
+        jobs_with_progress.append(data)
+
+    jobs_with_progress.sort(key=lambda x: x.get('modified'), reverse=True)
+    return jobs_with_progress
 
 
 def set_annotation(unit_id: int, coder: str, annotation: dict, status: Optional[str] = None) -> Annotation:
@@ -96,6 +117,7 @@ def set_annotation(unit_id: int, coder: str, annotation: dict, status: Optional[
     else:
         ann.annotation = annotation
         ann.status = status
+        ann.modified = datetime.datetime.now()
         ann.save()
         return ann
 

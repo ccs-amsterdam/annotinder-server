@@ -4,7 +4,7 @@ from flask import Blueprint, request, abort, make_response, jsonify, g
 from werkzeug.exceptions import HTTPException
 
 from amcat4annotator import auth, rules
-from amcat4annotator.db import create_codingjob, Unit, CodingJob, Annotation, User, STATUS, set_annotation
+from amcat4annotator.db import create_codingjob, Unit, CodingJob, Annotation, User, STATUS, get_user_jobs, set_annotation
 from amcat4annotator.auth import multi_auth, check_admin
 
 app_annotator = Blueprint('app_annotator', __name__)
@@ -61,6 +61,14 @@ def create_job():
                            rules=job['rules'], units=job['units'])
     return make_response(dict(id=job.id), 201)
 
+@app_annotator.route("/codingjobs", methods=['GET'])
+@multi_auth.login_required
+def get_jobs():
+    """
+    Retrieve all (active?) jobs
+    """
+    jobs = get_user_jobs(g.current_user.id)
+    return jsonify({"jobs": jobs})
 
 @app_annotator.route("/codingjob/<job_id>", methods=['GET'])
 @multi_auth.login_required
@@ -116,6 +124,7 @@ def get_unit(job_id):
         result['annotation'] = a[0].annotation
         result['status'] = a[0].status
     return jsonify(result)
+
 
 
 @app_annotator.route("/codingjob/<job_id>/unit/<unit_id>/annotation", methods=['POST'])

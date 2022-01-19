@@ -4,7 +4,7 @@ from distutils.core import setup
 
 setup(
     name="amcat4annotator",
-    version="0.10",
+    version="0.11",
     description="Annotator Backend API for AmCAT4 Text Analysis",
     author="Wouter van Atteveldt, Farzam Fanitabasi",
     author_email="wouter@vanatteveldt.com",
@@ -21,12 +21,14 @@ setup(
         "Flask",
         "Flask-HTTPAuth",
         "flask-cors",
-        "elasticsearch",
-        "bcrypt",
+        "peewee",
+        'authlib',
+        'bcrypt'
     ],
     extras_require={
         'dev': [
-            'nose',
+            'pytest',
+            'pytest-flask',
             'codecov',
         ]
     },

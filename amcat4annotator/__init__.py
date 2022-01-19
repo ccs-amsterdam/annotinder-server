@@ -1,2 +1,8 @@
-from amcat4annotator.annotator import app_annotator
-from amcat4annotator.annotation_auth import app_annotator_auth
+from flask import Flask
+from flask_cors import CORS
+
+from amcat4annotator.api import app_annotator
+
+app = Flask(__name__)
+CORS(app)
+app.register_blueprint(app_annotator)

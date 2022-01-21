@@ -95,10 +95,12 @@ def get_user_jobs(user_id: int) -> list:
 
         annotations = Annotation.select().join(Unit).where(Unit.codingjob == job.id, Annotation.coder == user_id, Annotation.status != 'IN_PROGRESS')
         data["n_coded"] = annotations.count()
-        data["modified"] = annotations.select(fn.MAX(Annotation.modified)).scalar()
+        data["modified"] = annotations.select(fn.MAX(Annotation.modified)).scalar() or 'NEW'
         jobs_with_progress.append(data)
 
-    jobs_with_progress.sort(key=lambda x: x.get('modified'), reverse=True)
+
+    now = datetime.datetime.now()
+    jobs_with_progress.sort(key=lambda x: now if x.get('modified') == 'NEW' else x.get('modified'), reverse=True)
     return jobs_with_progress
 
 

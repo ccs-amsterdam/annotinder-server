@@ -61,14 +61,15 @@ def create_job():
                            rules=job['rules'], units=job['units'])
     return make_response(dict(id=job.id), 201)
 
-@app_annotator.route("/codingjobs", methods=['GET'])
+@app_annotator.route("/login", methods=['GET'])
 @multi_auth.login_required
-def get_jobs():
+def get_login():
     """
-    Retrieve all (active?) jobs
+    All relevant information on login
+    Currently: email, is_admin, (active) jobs, 
     """
     jobs = get_user_jobs(g.current_user.id)
-    return jsonify({"jobs": jobs})
+    return jsonify({"jobs": jobs, "email": g.current_user.email, "is_admin": g.current_user.is_admin})
 
 @app_annotator.route("/codingjob/<job_id>", methods=['GET'])
 @multi_auth.login_required
@@ -77,16 +78,21 @@ def get_job(job_id):
     Return a single coding job definition
     """
     check_admin()
+    annotations = request.args.get("annotations")
     job = _job(job_id)
     units = list(Unit.select(Unit.id, Unit.gold, Unit.unit)
-                 .where(Unit.codingjob==job).tuples().dicts().execute())
-    return jsonify({
+                     .where(Unit.codingjob==job).tuples().dicts().execute())
+    cj = {
         "title": job.title,
         "codebook": job.codebook,
         "provenance": job.provenance,
         "rules": job.rules,
         "units": units
-    })
+    }
+    if annotations:
+        cj['annotations'] = list(Annotation.select(Annotation).join(Unit)
+                 .where(Unit.codingjob==job).tuples().dicts().execute())
+    return jsonify(cj)
 
 
 @app_annotator.route("/codingjob/<job_id>/codebook", methods=['GET'])

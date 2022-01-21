@@ -82,6 +82,14 @@ class Annotation(Model):
 def get_units(codingjob_id: int) -> Iterable[Unit]:
     return Unit.select().where(Unit.codingjob == codingjob_id)
 
+def get_user_data():
+    """
+    Retrieve list of users (admin only)
+    (at some point also add things like progress)
+    """
+    users = list(User.select())
+    return [{"id": u.id, "is_admin": u.is_admin, "email": u.email} for u in users]
+    
 def get_user_jobs(user_id: int) -> list:
     """
     Retrieve all (active?) jobs

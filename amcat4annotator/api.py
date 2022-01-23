@@ -168,7 +168,7 @@ def post_annotation(job_id, unit_id):
 @multi_auth.login_required
 def get_token():
     """
-    Get the token for the current
+    Get the  token for the current
     If ?user=email@example.com is specified, get the token for that user (requires admin privilege)
     If &create=true is specified, create the user if it doesn't exist (otherwise returns 404)
     """

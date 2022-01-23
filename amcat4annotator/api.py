@@ -197,5 +197,21 @@ def get_users():
     """
     check_admin()
     users = get_user_data()
-    print(users)
     return jsonify({"users": users})
+
+
+@app_annotator.route("/users", methods=['POST'])
+@multi_auth.login_required
+def add_users():
+    check_admin()
+    body = request.get_json(force=True)
+    
+    if 'users' not in body.keys():
+        return make_response({"error": "Body needs to have users"}, 400)
+    for user in body['users']:
+        u = User.get_or_none(User.email == user['email'])
+        if u:
+            continue
+        password = auth.hash_password(user['password']) if user['password'] else None
+        u = User.create(email=user['email'], is_admin=user['admin'], password=password)
+    return make_response('', 204)

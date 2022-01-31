@@ -1,4 +1,5 @@
 import logging
+from tabnanny import check
 
 from flask import Blueprint, request, abort, make_response, jsonify, g
 from werkzeug.exceptions import HTTPException
@@ -214,4 +215,24 @@ def add_users():
             continue
         password = auth.hash_password(user['password']) if user['password'] else None
         u = User.create(email=user['email'], is_admin=user['admin'], password=password)
+    return make_response('', 204)
+
+
+@app_annotator.route("/password", methods=['POST'])
+@multi_auth.login_required
+def set_password():
+    body = request.get_json(force=True)
+
+    if 'password' not in body.keys():
+        return make_response({"error": "Body needs to have password"}, 400)
+
+    if 'email' in body.keys():
+        if body['email'] != g.current_user.id: 
+            check_admin()
+        user = User.get(User.email == body['email'])
+    else:
+        user = User.get(User.email == g.current_user.id)
+
+    user.password = auth.hash_password(body['password'])
+    user.save()
     return make_response('', 204)

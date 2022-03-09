@@ -138,7 +138,7 @@ def redeem_job_token():
     email = f"jobuser__{job.id}__{user_id}"
     user = User.get_or_none(User.email == email)
     if not user:
-        User.create(email=email)
+        user = User.create(email=email)
     return jsonify({"token": auth.get_token(user),
                     "email": user.email,
                     "is_admin": user.is_admin})

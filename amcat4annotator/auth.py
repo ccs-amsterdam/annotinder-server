@@ -17,19 +17,19 @@ token_auth = HTTPTokenAuth()
 multi_auth = MultiAuth(basic_auth, token_auth)
 
 
-def get_token(user: User) -> str:
-    payload = {'user': user.email}
+def _get_token(payload: dict) -> str:
     return JsonWebSignature().serialize_compact(
         protected={'alg': 'HS256'},
         payload=json.dumps(payload).encode('utf-8'),
         key=SECRET_KEY).decode("ascii")
 
 
+def get_token(user: User) -> str:
+    return _get_token(payload={'user': user.email})
+
+
 def get_jobtoken(job: CodingJob) -> str:
-    return JsonWebSignature().serialize_compact(
-        protected={'alg': 'HS256'},
-        payload={'job': job.id.encode("utf-8")},
-        key=SECRET_KEY).decode("ascii")
+    return _get_token(payload={'job': job.id})
 
 
 def _verify_token(token: str) -> Optional[dict]:

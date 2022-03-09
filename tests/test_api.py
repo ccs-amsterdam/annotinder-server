@@ -110,3 +110,10 @@ def test_job_users(client, admin_user, user):
     jobid = post_json(client, '/codingjob', user=admin_user,
                       data={'authorization': {'restricted': True, 'users': [user.email]}, **job_dict})['id']
     get_json(client, f'/codingjob/{jobid}/unit', user=user, expected=200)
+
+
+def test_job_tokens(client, job, admin_user):
+    t = get_json(client, f'/codingjob/{job}/token', user=admin_user)
+    assert set(get_json(client, f'/jobtoken', query_string=dict(token=t['token'])).keys()) == {"email", "token", "is_admin"}
+    result = get_json(client, f'/jobtoken', query_string=dict(token=t['token'], user_id='pietje'))
+    assert 'pietje' in result['email']

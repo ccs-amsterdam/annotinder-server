@@ -8,22 +8,19 @@ from tests.conftest import get_json, post_json, UNITS, CODEBOOK, RULES
 
 
 def test_get_token(client, user):
-    assert client.get('/token').status_code == 401
+    assert client.get('/users/me/token').status_code == 401
     auth.change_password(user, 'geheim')
     credentials = b64encode(f"{user.email}:geheim".encode('ascii')).decode('ascii')
     headers = {"Authorization": f"Basic {credentials}"}
-    result = get_json(client, '/token', headers=headers)
+    result = get_json(client, '/users/me/token', headers=headers)
     assert auth.verify_token(result['token']) == user
 
 
 def test_get_token_admin(client, user, admin_user):
-    assert get_json(client, '/token', user=user, query_string=dict(user='new@example.com'), expected=401)
-    result = get_json(client, '/token', user=admin_user, query_string=dict(user=user.email), expected=200)
+    assert get_json(client, '/users/new@example.com/token', user=user, query_string=dict(user='new@example.com'), expected=401)
+    result = get_json(client, f'/users/{user.email}/token', user=admin_user, query_string=dict(user=user.email), expected=200)
     assert auth.verify_token(result['token']) == user
-    assert get_json(client, '/token', user=admin_user, query_string=dict(user='new@example.com'), expected=404)
-    result = get_json(client, '/token', user=admin_user, query_string=dict(user="new@example.com", create="true"),
-                      expected=200)
-    assert auth.verify_token(result['token']).email == "new@example.com"
+    assert get_json(client, f'/users/new@example.com/token', user=admin_user, query_string=dict(user='new@example.com'), expected=404)
 
 
 def test_post_job(client, admin_user):

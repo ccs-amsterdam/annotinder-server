@@ -1,9 +1,9 @@
+import hashlib
 import logging
-import string
-import random
+
 
 from flask import Blueprint, request, abort, make_response, jsonify, g
-from werkzeug.exceptions import HTTPException, Unauthorized
+from werkzeug.exceptions import HTTPException, Unauthorized, NotFound
 
 from amcat4annotator import auth, rules
 from amcat4annotator.db import create_codingjob, Unit, CodingJob, Annotation, User, STATUS, get_user_jobs, \
@@ -132,11 +132,13 @@ def redeem_job_token():
         raise Unauthorized("Job token not valid")
     user_id = request.args.get('user_id')
     if not user_id:
-        user_id = ''.join(random.choice(string.ascii_uppercase) for _ in range(8))
+        x = hashlib.sha1()
+        x.update(str(User.select().count()).encode('utf-8'))
+        user_id = x.hexdigest()
     email = f"jobuser__{job.id}__{user_id}"
     user = User.get_or_none(User.email == email)
     if not user:
-        User.create(email = email)
+        User.create(email=email)
     return jsonify({"token": auth.get_token(user),
                     "email": user.email,
                     "is_admin": user.is_admin})
@@ -241,7 +243,10 @@ def get_user_token(email):
     Get the  token for the given user
     """
     check_admin()
-    user = User.get(User.email == email)
+    try:
+        user = User.get(User.email == email)
+    except User.DoesNotExist:
+        raise NotFound()
     return jsonify({"token": auth.get_token(user)})
 
 

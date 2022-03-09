@@ -1,4 +1,5 @@
 import logging
+from tabnanny import check
 
 from flask import Blueprint, request, abort, make_response, jsonify, g
 from werkzeug.exceptions import HTTPException
@@ -34,7 +35,10 @@ def create_job():
       "title": <string>,
       "codebook": {.. blob ..},
       "rules": {
-        "ruleset": <string>, .. additional options ..
+        "ruleset": <string>,
+        "authorization": "open"|"restricted",
+        "authorized-users": [emails]
+        .. additional options ..
       },
       "units": [
         {"unit": {.. blob ..},
@@ -61,16 +65,16 @@ def create_job():
                            rules=job['rules'], units=job['units'])
     return make_response(dict(id=job.id), 201)
 
+
 @app_annotator.route("/login", methods=['GET'])
 @multi_auth.login_required
 def get_login():
     """
     All relevant information on login
-    Currently: email, is_admin, (active) jobs, 
+    Currently: email, is_admin, (active) jobs,
     """
     jobs = get_user_jobs(g.current_user.id)
     return jsonify({"jobs": jobs, "email": g.current_user.email, "is_admin": g.current_user.is_admin})
-
 
 
 @app_annotator.route("/codingjob/<job_id>", methods=['GET'])
@@ -134,7 +138,6 @@ def get_unit(job_id):
     return jsonify(result)
 
 
-
 @app_annotator.route("/codingjob/<job_id>/unit/<unit_id>/annotation", methods=['POST'])
 @multi_auth.login_required
 def post_annotation(job_id, unit_id):
@@ -168,7 +171,7 @@ def post_annotation(job_id, unit_id):
 @multi_auth.login_required
 def get_token():
     """
-    Get the token for the current
+    Get the  token for the current
     If ?user=email@example.com is specified, get the token for that user (requires admin privilege)
     If &create=true is specified, create the user if it doesn't exist (otherwise returns 404)
     """
@@ -176,7 +179,6 @@ def get_token():
     if user_email:
         check_admin()
         user = User.get_or_none(User.email == user_email)
-        print("\n???", user_email, user)
         if not user:
             if request.args.get("create", "").lower() == "true":
                 user = User.create(email=user_email)
@@ -185,8 +187,6 @@ def get_token():
     else:
         user = g.current_user
     return jsonify({"token": auth.get_token(user)})
-
-
 
 
 @app_annotator.route("/users", methods=['GET'])
@@ -205,7 +205,7 @@ def get_users():
 def add_users():
     check_admin()
     body = request.get_json(force=True)
-    
+
     if 'users' not in body.keys():
         return make_response({"error": "Body needs to have users"}, 400)
     for user in body['users']:
@@ -214,4 +214,24 @@ def add_users():
             continue
         password = auth.hash_password(user['password']) if user['password'] else None
         u = User.create(email=user['email'], is_admin=user['admin'], password=password)
+    return make_response('', 204)
+
+
+@app_annotator.route("/password", methods=['POST'])
+@multi_auth.login_required
+def set_password():
+    body = request.get_json(force=True)
+
+    if 'password' not in body.keys():
+        return make_response({"error": "Body needs to have password"}, 400)
+
+    if 'email' in body.keys():
+        if body['email'] != g.current_user.id:
+            check_admin()
+        user = User.get(User.email == body['email'])
+    else:
+        user = User.get(User.email == g.current_user.id)
+
+    user.password = auth.hash_password(body['password'])
+    user.save()
     return make_response('', 204)

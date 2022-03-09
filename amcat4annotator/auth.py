@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Optional
 
@@ -17,10 +18,26 @@ multi_auth = MultiAuth(basic_auth, token_auth)
 
 
 def get_token(user: User) -> str:
+    payload = {'user': user.email}
     return JsonWebSignature().serialize_compact(
         protected={'alg': 'HS256'},
-        payload=user.email.encode("utf-8"),
+        payload=json.dumps(payload).encode('utf-8'),
         key=SECRET_KEY).decode("ascii")
+
+
+def get_jobtoken(job: CodingJob) -> str:
+    return JsonWebSignature().serialize_compact(
+        protected={'alg': 'HS256'},
+        payload={'job': job.id.encode("utf-8")},
+        key=SECRET_KEY).decode("ascii")
+
+
+def _verify_token(token: str) -> Optional[dict]:
+    try:
+        payload = JsonWebSignature().deserialize_compact(token, SECRET_KEY)
+    except DecodeError:
+        return None
+    return json.loads(payload['payload'].decode("utf-8"))
 
 
 def verify_token(token: str) -> Optional[User]:
@@ -29,13 +46,21 @@ def verify_token(token: str) -> Optional[User]:
 
     If the token is invalid, expired, or the user does not exist, returns None
     """
-    try:
-        payload = JsonWebSignature().deserialize_compact(token, SECRET_KEY)
-    except DecodeError:
+    payload = _verify_token(token)
+    if payload is None or 'user' not in payload:
         return None
+    return User.get_or_none(User.email == payload['user'])
 
-    email = payload['payload'].decode("utf-8")
-    return User.get_or_none(User.email == email)
+
+def verify_jobtoken(token: str) -> Optional[CodingJob]:
+    """
+    Verify the given job token, returning the job
+    If the token is invalid, expired, or the user does not exist, returns None
+    """
+    payload = _verify_token(token)
+    if payload is None or 'job' not in payload:
+        return None
+    return CodingJob.get_or_none(CodingJob.id == payload['job'])
 
 
 def hash_password(password: str) -> str:

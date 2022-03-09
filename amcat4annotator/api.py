@@ -1,13 +1,14 @@
 import logging
-from tabnanny import check
+import string
+import random
 
 from flask import Blueprint, request, abort, make_response, jsonify, g
-from werkzeug.exceptions import HTTPException
+from werkzeug.exceptions import HTTPException, Unauthorized
 
 from amcat4annotator import auth, rules
 from amcat4annotator.db import create_codingjob, Unit, CodingJob, Annotation, User, STATUS, get_user_jobs, \
     get_user_data, set_annotation, JobUser, add_jobusers
-from amcat4annotator.auth import multi_auth, check_admin, check_job_user
+from amcat4annotator.auth import multi_auth, check_admin, check_job_user, get_jobtoken, verify_jobtoken
 
 app_annotator = Blueprint('app_annotator', __name__)
 
@@ -82,20 +83,6 @@ def add_job_users(job_id):
     return make_response('', 204)
 
 
-
-
-
-@app_annotator.route("/login", methods=['GET'])
-@multi_auth.login_required
-def get_login():
-    """
-    All relevant information on login
-    Currently: email, is_admin, (active) jobs,
-    """
-    jobs = get_user_jobs(g.current_user.id)
-    return jsonify({"jobs": jobs, "email": g.current_user.email, "is_admin": g.current_user.is_admin})
-
-
 @app_annotator.route("/codingjob/<job_id>", methods=['GET'])
 @multi_auth.login_required
 def get_job(job_id):
@@ -118,6 +105,41 @@ def get_job(job_id):
         cj['annotations'] = list(Annotation.select(Annotation).join(Unit)
                  .where(Unit.codingjob==job).tuples().dicts().execute())
     return jsonify(cj)
+
+
+@app_annotator.route("/codingjob/<job_id>/token", methods=['GET'])
+@multi_auth.login_required
+def get_job_token(job_id):
+    """
+    Create a 'job token' for this job
+    This allows anyone to code units on this job
+    """
+    check_admin()
+    job = _job(job_id)
+    token = get_jobtoken(job)
+    return jsonify({"token": token})
+
+
+@app_annotator.route("/jobtoken", methods=['GET'])
+def redeem_job_token():
+    """
+    Convert a job token into a 'normal' token.
+    Should be called with a token and optional user_id argument
+    """
+    token = request.args['token']
+    job = verify_jobtoken(token)
+    if not job:
+        raise Unauthorized("Job token not valid")
+    user_id = request.args.get('user_id')
+    if not user_id:
+        user_id = ''.join(random.choice(string.ascii_uppercase) for _ in range(8))
+    email = f"jobuser__{job.id}__{user_id}"
+    user = User.get_or_none(User.email == email)
+    if not user:
+        User.create(email = email)
+    return jsonify({"token": auth.get_token(user),
+                    "email": user.email,
+                    "is_admin": user.is_admin})
 
 
 @app_annotator.route("/codingjob/<job_id>/codebook", methods=['GET'])
@@ -190,25 +212,36 @@ def post_annotation(job_id, unit_id):
     return make_response('', 204)
 
 
-@app_annotator.route("/token", methods=['GET'])
+@app_annotator.route("/users/me/token", methods=['GET'])
 @multi_auth.login_required
-def get_token():
+def get_my_token():
     """
-    Get the  token for the current
-    If ?user=email@example.com is specified, get the token for that user (requires admin privilege)
-    If &create=true is specified, create the user if it doesn't exist (otherwise returns 404)
+    Get the token (and user details) for the current user
     """
-    user_email = request.args.get("user")
-    if user_email:
-        check_admin()
-        user = User.get_or_none(User.email == user_email)
-        if not user:
-            if request.args.get("create", "").lower() == "true":
-                user = User.create(email=user_email)
-            else:
-                abort(404)
-    else:
-        user = g.current_user
+    return jsonify({"token": auth.get_token(g.current_user),
+                    "email": g.current_user.email,
+                    "is_admin": g.current_user.is_admin})
+
+
+@app_annotator.route("/users/me/codingjobs", methods=['GET'])
+@multi_auth.login_required
+def get_my_jobs():
+    """
+    Get a list of coding jobs
+    Currently: email, is_admin, (active) jobs,
+    """
+    jobs = get_user_jobs(g.current_user.id)
+    return jsonify({"jobs": jobs})
+
+
+@app_annotator.route("/users/<email>/token", methods=['GET'])
+@multi_auth.login_required
+def get_user_token(email):
+    """
+    Get the  token for the given user
+    """
+    check_admin()
+    user = User.get(User.email == email)
     return jsonify({"token": auth.get_token(user)})
 
 
@@ -260,5 +293,5 @@ def set_password():
     return make_response('', 204)
 
 # TODO
-# - get_token moet user kunnen creeren vor een 'job token' (en email/id teruggeven) (of een nieuw endpoint. zoveel keuzes)
-# - endpoint om 'job tokens' te kunnen aanmaken
+# - redeem_jobtoken moet user kunnen creeren vor een 'job token' (en email/id teruggeven) [untested]
+# - endpoint om 'job tokens' te kunnen aanmaken [untested]

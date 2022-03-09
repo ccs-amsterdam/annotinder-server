@@ -7,7 +7,7 @@ from authlib.jose.errors import DecodeError
 from flask_httpauth import HTTPBasicAuth, HTTPTokenAuth, MultiAuth, g
 from werkzeug.exceptions import Unauthorized
 
-from amcat4annotator.db import User
+from amcat4annotator.db import User, CodingJob, JobUser
 
 SECRET_KEY = "not very secret, sorry"
 
@@ -75,3 +75,8 @@ def app_verify_token(token) -> bool:
 def check_admin():
     if not g.current_user.is_admin:
         raise Unauthorized("Admin rights required")
+
+
+def check_job_user(job: CodingJob):
+    if job.restricted and not JobUser.select().where(JobUser.user == g.current_user, JobUser.job == job).exists():
+        raise Unauthorized("User not authorized for job")

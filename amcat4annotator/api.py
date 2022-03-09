@@ -5,8 +5,9 @@ from flask import Blueprint, request, abort, make_response, jsonify, g
 from werkzeug.exceptions import HTTPException
 
 from amcat4annotator import auth, rules
-from amcat4annotator.db import create_codingjob, Unit, CodingJob, Annotation, User, STATUS, get_user_jobs, get_user_data, set_annotation
-from amcat4annotator.auth import multi_auth, check_admin
+from amcat4annotator.db import create_codingjob, Unit, CodingJob, Annotation, User, STATUS, get_user_jobs, \
+    get_user_data, set_annotation, JobUser, add_jobusers
+from amcat4annotator.auth import multi_auth, check_admin, check_job_user
 
 app_annotator = Blueprint('app_annotator', __name__)
 
@@ -34,11 +35,14 @@ def create_job():
      {
       "title": <string>,
       "codebook": {.. blob ..},
+      "authorization": {  # optional, default: {'restricted': False}
+        restricted: boolean,
+        users: [emails]
+      }
       "rules": {
         "ruleset": <string>,
-        "authorization": "open"|"restricted",
-        "authorized-users": [emails]
-        .. additional options ..
+        "authorization": "open"|"restricted",  # optional, default: open
+        .. additional ruleset parameters ..
       },
       "units": [
         {"unit": {.. blob ..},
@@ -61,9 +65,24 @@ def create_job():
     job = request.get_json(force=True)
     if {"title", "codebook", "units", "rules"} - set(job.keys()):
         return make_response({"error": "Codinjob is missing keys"}, 400)
-    job = create_codingjob(title = job['title'], codebook=job['codebook'], provenance=job.get('provenance'),
-                           rules=job['rules'], units=job['units'])
+    job = create_codingjob(title=job['title'], codebook=job['codebook'], provenance=job.get('provenance'),
+                           rules=job['rules'], units=job['units'], authorization=job.get('authorization'))
     return make_response(dict(id=job.id), 201)
+
+
+@app_annotator.route("/codingjob/<job_id>/users", methods=['POST'])
+@multi_auth.login_required
+def add_job_users(job_id):
+    """
+    Add users to this coding job, creating them if they do not exist
+    """
+    check_admin()
+    d = request.get_json(force=True)
+    add_jobusers(codingjob_id=job_id, emails=d['users'])
+    return make_response('', 204)
+
+
+
 
 
 @app_annotator.route("/login", methods=['GET'])
@@ -105,6 +124,7 @@ def get_job(job_id):
 @multi_auth.login_required
 def get_codebook(job_id):
     job = _job(job_id)
+    check_job_user(job)
     return jsonify(job.codebook)
 
 
@@ -112,6 +132,7 @@ def get_codebook(job_id):
 @multi_auth.login_required
 def progress(job_id):
     job = _job(job_id)
+    check_job_user(job)
     return jsonify(rules.get_progress_report(job, g.current_user))
 
 
@@ -123,6 +144,7 @@ def get_unit(job_id):
     If ?index=i is specified, seek a specific unit. Otherwise, return the next unit to code
     """
     job = _job(job_id)
+    check_job_user(job)
     index = request.args.get("index")
     if index:
         u = rules.seek_unit(job, g.current_user, index=int(index))
@@ -152,6 +174,7 @@ def post_annotation(job_id, unit_id):
     # TODO check if this coder is allowed to set this annotation
     unit = Unit.get_or_none(Unit.id == unit_id)
     job = _job(job_id)
+    check_job_user(job)
     if not unit:
         abort(404)
     if unit.codingjob != job:
@@ -235,3 +258,7 @@ def set_password():
     user.password = auth.hash_password(body['password'])
     user.save()
     return make_response('', 204)
+
+# TODO
+# - get_token moet user kunnen creeren vor een 'job token' (en email/id teruggeven) (of een nieuw endpoint. zoveel keuzes)
+# - endpoint om 'job tokens' te kunnen aanmaken

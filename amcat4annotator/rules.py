@@ -2,7 +2,7 @@ from typing import Optional
 
 from peewee import fn, JOIN
 
-from amcat4annotator.db import Unit, User, Annotation, CodingJob
+from amcat4annotator.db import Unit, User, Annotation, CodingJob, JobUser
 
 
 class ValidationError(Exception):

@@ -34,16 +34,24 @@ class CodingJob(Model):
     codebook = JSONField()
     provenance = JSONField()
     rules = JSONField()
+    restricted = BooleanField(default=False)
 
     class Meta:
         database = db
 
 
-def create_codingjob(title: str, codebook: dict, provenance: dict, rules: dict, units: List[dict]) -> int:
-    job = CodingJob.create(title=title, codebook=codebook, rules=rules, provenance=provenance)
+def create_codingjob(title: str, codebook: dict, provenance: dict, rules: dict, units: List[dict],
+                     authorization: Optional[dict]=None) -> int:
+    if authorization is None:
+        authorization = {}
+    restricted = authorization.get('restricted', False)
+    job = CodingJob.create(title=title, codebook=codebook, rules=rules, provenance=provenance, restricted=restricted)
     Unit.insert_many(
         [{'codingjob': job, 'unit': u['unit'], 'gold': u.get('gold')} for u in units]
     ).execute()
+    users = authorization.get('users', [])
+    if users:
+        add_jobusers(codingjob_id=job.id, emails=users)
     return job
 
 
@@ -79,8 +87,26 @@ class Annotation(Model):
         database = db
 
 
+class JobUser(Model):
+    user = ForeignKeyField(User, on_delete='CASCADE')
+    job = ForeignKeyField(CodingJob, on_delete='CASCADE')
+    is_admin = BooleanField(default=False)
+
+    class Meta:
+        database = db
+
+
+def add_jobusers(codingjob_id: int, emails: Iterable[str]):
+    for email in emails:
+        user = User.get_or_none(User.email == email)
+        if not user:
+            user = User.create(email=email)
+        JobUser.create(user=user, job_id=codingjob_id)
+
+
 def get_units(codingjob_id: int) -> Iterable[Unit]:
     return Unit.select().where(Unit.codingjob == codingjob_id)
+
 
 def get_user_data():
     """
@@ -89,7 +115,7 @@ def get_user_data():
     """
     users = list(User.select())
     return [{"id": u.id, "is_admin": u.is_admin, "email": u.email} for u in users]
-    
+
 def get_user_jobs(user_id: int) -> list:
     """
     Retrieve all (active?) jobs
@@ -132,4 +158,4 @@ def set_annotation(unit_id: int, coder: str, annotation: dict, status: Optional[
         return ann
 
 #TODO: is it good practice to always call this on import?
-db.create_tables([CodingJob, Unit, Annotation, User])
+db.create_tables([CodingJob, Unit, Annotation, User, JobUser])

@@ -63,10 +63,11 @@ def get_json(client, url, expected=200, headers=None, user=None, **kargs):
     return json.loads(response.get_data(as_text=True))
 
 
-def post_json(client, url, data, expected=201, user=None, headers=None, content_type='application/json', decode=True,
+def post_json(client, url, data, expected=201, user=None, headers=None, content_type='application/json', decode=None,
               **kargs):
     headers = _build_headers(headers, user)
     response = client.post(url, data=json.dumps(data), headers=headers, content_type=content_type, **kargs)
     assert response.status_code == expected
+    decode = (expected != 204) if decode is None else decode
     if decode:
         return json.loads(response.get_data(as_text=True))

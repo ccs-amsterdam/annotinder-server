@@ -94,3 +94,22 @@ def test_progress(client, user, job):
     p = get_json(client,  f'/codingjob/{job}/progress', user=user)
     assert p['n_coded'] == 1
 
+
+def test_job_users(client, admin_user, user):
+    job_dict = dict(title="test", codebook=CODEBOOK, units=UNITS, rules=RULES)
+    # user should be able to code a non-restricted job
+    jobid = post_json(client, '/codingjob', data={'authorization': {'restricted': False}, **job_dict}, user=admin_user)['id']
+    get_json(client, f'/codingjob/{jobid}/unit', user=user, expected=200)
+    # Which should be the default
+    jobid = post_json(client, '/codingjob', data={**job_dict}, user=admin_user)['id']
+    get_json(client, f'/codingjob/{jobid}/unit', user=user, expected=200)
+    # user should not be able to code a restricted job
+    jobid = post_json(client, '/codingjob', data={'authorization': {'restricted': True}, **job_dict}, user=admin_user)['id']
+    get_json(client, f'/codingjob/{jobid}/unit', user=user, expected=401)
+    # Add a user to the job
+    post_json(client, f'/codingjob/{jobid}/users', data={'users': [user.email]}, user=admin_user, expected=204)
+    get_json(client, f'/codingjob/{jobid}/unit', user=user, expected=200)
+    # Can we add users as part of the rules?
+    jobid = post_json(client, '/codingjob', user=admin_user,
+                      data={'authorization': {'restricted': True, 'users': [user.email]}, **job_dict})['id']
+    get_json(client, f'/codingjob/{jobid}/unit', user=user, expected=200)

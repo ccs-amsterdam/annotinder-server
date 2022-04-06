@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 
 from peewee import fn, JOIN
 
@@ -26,19 +26,12 @@ class RuleSet:
         """
         pass
 
-    def get_next_unit(self, job: CodingJob, coder: User) -> Optional[Unit]:
-        """
-        Get the next unit this coder should code. Returns None if no units can be found
-        """
-        raise NotImplementedError()
-
     def get_progress(self, job: CodingJob, coder: User) -> dict:
         """
         Return the progress report for this job, including seek permissions
-        """
-        n_coded = Annotation.select().join(Unit).where(Unit.codingjob == job.id, Annotation.coder == coder.id, Annotation.status != 'IN_PROGRESS').count()
+        """        
         return dict(
-            n_coded=n_coded,
+            n_coded=self.n_coded(job, coder),
             n_total=self.n_total(job, coder),
             seek_backwards=self.can_seek_backwards,
             seek_forwards=self.can_seek_forwards,
@@ -46,7 +39,17 @@ class RuleSet:
 
     def seek_unit(self, job: CodingJob, coder: User, index: int) -> Optional[Unit]:
         """
-        Get a specific unit by index. Returns None if index could not be found
+        Get a specific unit by index. Note that this index is specific for a CodingJob X User. 
+        The first item in a CodingJob or user 1 is not necesarily the same as for user 2.  
+        Returns None if index could not be found
+        """
+        raise NotImplementedError()
+
+    def get_next_unit(self, job: CodingJob, coder: User) -> Tuple[Optional[Unit], int]:
+        """
+        Like seek_unit, but without specifying an index. The next unit will then be determined
+        by some rule specific method (e.g., order in DB, prioritizing units least coded by others).
+        Returns two values. First is the Unit, which can be None if missing. Second is the unit index. 
         """
         raise NotImplementedError()
 
@@ -58,12 +61,17 @@ class RuleSet:
     def can_seek_forwards(self):
         return False
 
+    def n_coded(self, job: CodingJob, coder: User): 
+        return Annotation.select().join(Unit).where(Unit.codingjob == job.id, Annotation.coder == coder.id, Annotation.status != 'IN_PROGRESS').count()
+
     def n_total(self, job: CodingJob, coder: User):
         return Unit.select().where(Unit.codingjob == job.id).count()
 
 
 class CrowdCoding(RuleSet):
     def get_next_unit(self, job: CodingJob, coder: User) -> Optional[Unit]:
+        unit_index = self.n_coded(job, coder)
+
         # (1) Is there a unit currently IN_PROGRESS?
         in_progress = list(
             Unit.select()
@@ -71,7 +79,7 @@ class CrowdCoding(RuleSet):
             .where(Unit.codingjob == job.id, Annotation.coder == coder.id, Annotation.status == 'IN_PROGRESS')
             .limit(1).execute())
         if in_progress:
-            return in_progress[0]
+            return in_progress[0], unit_index
 
         # (2) Is there a unit left that has been coded by no one??
         uncoded = list(
@@ -80,7 +88,7 @@ class CrowdCoding(RuleSet):
             .where(Unit.codingjob == job.id, Annotation.id.is_null())
             .limit(1).execute())
         if uncoded:
-            return uncoded[0]
+            return uncoded[0], unit_index
 
         # (3) select a unit that is uncoded by me, and least coded by anyone else
         coded = {t[0] for t in Annotation.select(Unit.id).join(Unit).
@@ -95,10 +103,11 @@ class CrowdCoding(RuleSet):
             .limit(1))
 
         if least_coded:
-            return least_coded[0]
+            return least_coded[0], unit_index
 
         # No units were selected, so done coding I guess?
-        return None
+        # (should we add a check for whether n_coded == self.n_total(job,coder) ?)
+        return None, unit_index
 
     def seek_unit(self, job: CodingJob, coder: User, index: int) -> Optional[Unit]:
         coded = sorted(Annotation.select(Annotation.id, Unit.id).join(Unit)

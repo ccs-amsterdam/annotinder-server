@@ -171,12 +171,13 @@ def get_unit(job_id):
     check_job_user(job)
     index = request.args.get("index")
     if index:
-        u = rules.seek_unit(job, g.current_user, index=int(index))
+        index = int(index)
+        u = rules.seek_unit(job, g.current_user, index=index)
     else:
-        u = rules.get_next_unit(job, g.current_user)
+        u, index = rules.get_next_unit(job, g.current_user)
     if not u:
         abort(404)
-    result = {'id': u.id, 'unit': u.unit}
+    result = {'id': u.id, 'unit': u.unit, 'index': index}
     a = list(Annotation.select().where(Annotation.unit == u.id, Annotation.coder == g.current_user.id))
     if a:
         result['annotation'] = a[0].annotation

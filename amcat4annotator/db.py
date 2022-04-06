@@ -6,7 +6,7 @@ from enum import Enum
 from typing import List, Iterable, Optional
 
 from peewee import DateTimeField, Model, CharField, IntegerField, SqliteDatabase, AutoField, TextField, ForeignKeyField, DoesNotExist, \
-    BooleanField, fn
+    BooleanField, fn, JOIN
 import logging
 
 
@@ -118,9 +118,9 @@ def get_user_data():
 
 def get_user_jobs(user_id: int) -> list:
     """
-    Retrieve all (active?) jobs
+    Retrieve all user jobs
     """
-    jobs = list(CodingJob.select())
+    jobs = list(CodingJob.select(CodingJob.id, CodingJob.title).join(JobUser, JOIN.LEFT_OUTER).where(CodingJob.restricted == False or JobUser.user == user_id))
 
     jobs_with_progress = []
     for job in jobs:
@@ -136,7 +136,6 @@ def get_user_jobs(user_id: int) -> list:
     now = datetime.datetime.now()
     jobs_with_progress.sort(key=lambda x: now if x.get('modified') == 'NEW' else x.get('modified'), reverse=True)
     return jobs_with_progress
-
 
 def set_annotation(unit_id: int, coder: str, annotation: dict, status: Optional[str] = None) -> Annotation:
     """Create a new annotation or replace an existing annotation"""

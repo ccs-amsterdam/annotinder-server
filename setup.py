@@ -4,7 +4,7 @@ from distutils.core import setup
 
 setup(
     name="amcat4annotator",
-    version="0.16",
+    version="0.17",
     description="Annotator Backend API for AmCAT4 Text Analysis",
     author="Wouter van Atteveldt, Farzam Fanitabasi",
     author_email="wouter@vanatteveldt.com",

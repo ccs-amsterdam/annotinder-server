@@ -7,7 +7,7 @@ from werkzeug.exceptions import HTTPException, Unauthorized, NotFound
 
 from amcat4annotator import auth, rules
 from amcat4annotator.db import create_codingjob, Unit, CodingJob, Annotation, User, STATUS, get_user_jobs, \
-    get_user_data, set_annotation, JobUser, add_jobusers
+    get_user_data, get_jobs, set_annotation, JobUser, add_jobusers
 from amcat4annotator.auth import multi_auth, check_admin, check_job_user, get_jobtoken, verify_jobtoken
 
 app_annotator = Blueprint('app_annotator', __name__)
@@ -25,6 +25,12 @@ def _job(job_id: int):
     if not job:
         abort(404)
     return job
+
+def _user(user_id: int):
+    user = User.get_or_none(User.id == user_id)
+    if not user:
+        abort(404)
+    return user
 
 
 @app_annotator.route("/codingjob", methods=['POST'])
@@ -46,7 +52,8 @@ def create_job():
         .. additional ruleset parameters ..
       },
       "units": [
-        {"unit": {.. blob ..},
+        {"id": <string>         # An id string. Needs to be unique within a codingjob (not necessarily across codingjobs)
+         "unit": {.. blob ..},
          "gold": {.. blob ..},  # optional, include correct answer here for gold questions
         }
         ..
@@ -69,6 +76,7 @@ def create_job():
     job = create_codingjob(title=job['title'], codebook=job['codebook'], provenance=job.get('provenance'),
                            rules=job['rules'], units=job['units'], authorization=job.get('authorization'))
     return make_response(dict(id=job.id), 201)
+
 
 @app_annotator.route("/codingjob/<job_id>/archived", methods=['GET'])
 @multi_auth.login_required
@@ -119,16 +127,6 @@ def get_job(job_id):
                  .where(Unit.codingjob==job).tuples().dicts().execute())
     return jsonify(cj)
 
-@app_annotator.route("/codingjob/<job_id>/annotations", methods=['GET'])
-@multi_auth.login_required
-def get_job_annotations(job_id):
-    """
-    Return a single coding job definition
-    """
-    check_admin()
-    job = _job(job_id)
-    annotations = list(Annotation.select(Annotation).join(Unit).where(Unit.codingjob==job).tuples().dicts().execute())
-    return jsonify(annotations)
 
 @app_annotator.route("/codingjob/<job_id>/details", methods=['GET'])
 @multi_auth.login_required
@@ -137,24 +135,34 @@ def get_job_details(job_id):
     Return job details. Primarily for an admin to see progress and settings.
     """
     check_admin()
-    annotations = request.args.get("annotations")
     job = _job(job_id)
-    units = list(Unit.select(Unit.id, Unit.gold, Unit.unit)
-                     .where(Unit.codingjob==job).tuples().dicts().execute())
-    cj = {
+    n_total = Unit.select().where(Unit.codingjob == job.id).count()
+    
+    data = {
+        "id": job_id,
         "title": job.title,
         "codebook": job.codebook,
-        "provenance": job.provenance,
         "rules": job.rules,
-        "units": units
+        "restricted": job.restricted,
+        "created": job.created,
+        "archived": job.archived,
+        "n_total": n_total,
     }
-    if annotations:
-        cj['annotations'] = list(Annotation.select(Annotation).join(Unit)
-                 .where(Unit.codingjob==job).tuples().dicts().execute())
-    return jsonify(cj)
+ 
+    return jsonify(data)
 
 
-
+@app_annotator.route("/codingjob/<job_id>/annotations", methods=['GET'])
+@multi_auth.login_required
+def get_job_annotations(job_id):
+    """
+    Return a list with all annotations
+    """
+    check_admin()
+    job = _job(job_id)
+    units = list(Annotation.select(Unit, Annotation, User.email).join(Unit).where(Unit.codingjob==job).join(User, on=(Annotation.coder == User.id)).tuples().dicts().execute())
+    data = [{"unit_id": u["external_id"], "coder": u["email"], "annotation": u["annotation"], "status": u["status"]} for u in units]
+    return jsonify(data)
 
 @app_annotator.route("/codingjob/<job_id>/token", methods=['GET'])
 @multi_auth.login_required
@@ -274,6 +282,16 @@ def get_my_token():
                     "email": g.current_user.email,
                     "is_admin": g.current_user.is_admin})
 
+
+@app_annotator.route("/codingjobs", methods=['GET'])
+@multi_auth.login_required
+def get_all_jobs():
+    """
+    Get a list of all codingjobs
+    """
+    check_admin()
+    jobs = get_jobs()
+    return jsonify({"jobs": jobs})
 
 @app_annotator.route("/users/me/codingjobs", methods=['GET'])
 @multi_auth.login_required

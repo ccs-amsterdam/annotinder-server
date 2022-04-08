@@ -49,7 +49,7 @@ def create_codingjob(title: str, codebook: dict, provenance: dict, rules: dict, 
     restricted = authorization.get('restricted', False)
     job = CodingJob.create(title=title, codebook=codebook, rules=rules, provenance=provenance, restricted=restricted)
     Unit.insert_many(
-        [{'codingjob': job, 'unit': u['unit'], 'gold': u.get('gold')} for u in units]
+        [{'codingjob': job, 'external_id': u['id'], 'unit': u['unit'], 'gold': u.get('gold')} for u in units]
     ).execute()
     users = authorization.get('users', [])
     if users:
@@ -60,11 +60,15 @@ def create_codingjob(title: str, codebook: dict, provenance: dict, rules: dict, 
 class Unit(Model):
     id = AutoField()
     codingjob = ForeignKeyField(CodingJob, on_delete='CASCADE')
+    external_id = CharField()  
     unit = JSONField()
     gold = JSONField(null=True)
 
     class Meta:
         database = db
+        indexes = (
+        (('codingjob', 'external_id'), True),  
+    )
 
 
 class User(Model):
@@ -119,9 +123,18 @@ def get_user_data():
     users = list(User.select())
     return [{"id": u.id, "is_admin": u.is_admin, "email": u.email} for u in users]
 
+def get_jobs() -> list:
+    """
+    Retrieve all jobs. Only basic meta data. 
+    """
+    jobs = list(CodingJob.select(CodingJob.id, CodingJob.title, CodingJob.created, CodingJob.archived))
+    data = [dict(id= job.id, title= job.title, created= job.created, archived= job.archived) for job in jobs]
+    data.sort(key=lambda x: x.get('created'), reverse=True)
+    return data
+
 def get_user_jobs(user_id: int) -> list:
     """
-    Retrieve all user jobs
+    Retrieve all user jobs, including progress
     """
     jobs = list(CodingJob.select(CodingJob.id, CodingJob.title, CodingJob.created, CodingJob.archived).join(JobUser, JOIN.LEFT_OUTER).where(CodingJob.restricted == False or JobUser.user == user_id))
 
@@ -138,7 +151,7 @@ def get_user_jobs(user_id: int) -> list:
 
 
     now = datetime.datetime.now()
-    jobs_with_progress.sort(key=lambda x: now if x.get('modified') == 'NEW' else x.get('modified'), reverse=True)
+    jobs_with_progress.sort(key=lambda x: x.get('created') if x.get('modified') == 'NEW' else x.get('modified'), reverse=True)
     return jobs_with_progress
 
 def set_annotation(unit_id: int, coder: str, annotation: dict, status: Optional[str] = None) -> Annotation:

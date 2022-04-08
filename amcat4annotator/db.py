@@ -35,6 +35,8 @@ class CodingJob(Model):
     provenance = JSONField()
     rules = JSONField()
     restricted = BooleanField(default=False)
+    created = DateTimeField(default=datetime.datetime.now())
+    archived = BooleanField(default=False)
 
     class Meta:
         database = db
@@ -91,6 +93,7 @@ class JobUser(Model):
     user = ForeignKeyField(User, on_delete='CASCADE')
     job = ForeignKeyField(CodingJob, on_delete='CASCADE')
     is_admin = BooleanField(default=False)
+    hidden = BooleanField(default=False)
 
     class Meta:
         database = db
@@ -120,11 +123,12 @@ def get_user_jobs(user_id: int) -> list:
     """
     Retrieve all user jobs
     """
-    jobs = list(CodingJob.select(CodingJob.id, CodingJob.title).join(JobUser, JOIN.LEFT_OUTER).where(CodingJob.restricted == False or JobUser.user == user_id))
+    jobs = list(CodingJob.select(CodingJob.id, CodingJob.title, CodingJob.created, CodingJob.archived).join(JobUser, JOIN.LEFT_OUTER).where(CodingJob.restricted == False or JobUser.user == user_id))
 
     jobs_with_progress = []
     for job in jobs:
-        data = {"id": job.id, "title": job.title}
+        if job.archived: continue
+        data = {"id": job.id, "title": job.title, "created": job.created}
         data["n_total"] = Unit.select().where(Unit.codingjob == job.id).count()
 
         annotations = Annotation.select().join(Unit).where(Unit.codingjob == job.id, Annotation.coder == user_id, Annotation.status != 'IN_PROGRESS')

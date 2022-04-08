@@ -70,6 +70,18 @@ def create_job():
                            rules=job['rules'], units=job['units'], authorization=job.get('authorization'))
     return make_response(dict(id=job.id), 201)
 
+@app_annotator.route("/codingjob/<job_id>/archived", methods=['GET'])
+@multi_auth.login_required
+def set_job_archived(job_id):
+    """
+    Toggle job.archived. Admin only. Archived jobs are no longer visible to coders.
+    """
+    check_admin()
+    job = _job(job_id)
+    job.archived = not job.archived
+    job.save()
+    return make_response(dict(archived=job.archived), 201)
+
 
 @app_annotator.route("/codingjob/<job_id>/users", methods=['POST'])
 @multi_auth.login_required
@@ -95,6 +107,7 @@ def get_job(job_id):
     units = list(Unit.select(Unit.id, Unit.gold, Unit.unit)
                      .where(Unit.codingjob==job).tuples().dicts().execute())
     cj = {
+        "id": job_id,
         "title": job.title,
         "codebook": job.codebook,
         "provenance": job.provenance,
@@ -105,6 +118,42 @@ def get_job(job_id):
         cj['annotations'] = list(Annotation.select(Annotation).join(Unit)
                  .where(Unit.codingjob==job).tuples().dicts().execute())
     return jsonify(cj)
+
+@app_annotator.route("/codingjob/<job_id>/annotations", methods=['GET'])
+@multi_auth.login_required
+def get_job_annotations(job_id):
+    """
+    Return a single coding job definition
+    """
+    check_admin()
+    job = _job(job_id)
+    annotations = list(Annotation.select(Annotation).join(Unit).where(Unit.codingjob==job).tuples().dicts().execute())
+    return jsonify(annotations)
+
+@app_annotator.route("/codingjob/<job_id>/details", methods=['GET'])
+@multi_auth.login_required
+def get_job_details(job_id):
+    """
+    Return job details. Primarily for an admin to see progress and settings.
+    """
+    check_admin()
+    annotations = request.args.get("annotations")
+    job = _job(job_id)
+    units = list(Unit.select(Unit.id, Unit.gold, Unit.unit)
+                     .where(Unit.codingjob==job).tuples().dicts().execute())
+    cj = {
+        "title": job.title,
+        "codebook": job.codebook,
+        "provenance": job.provenance,
+        "rules": job.rules,
+        "units": units
+    }
+    if annotations:
+        cj['annotations'] = list(Annotation.select(Annotation).join(Unit)
+                 .where(Unit.codingjob==job).tuples().dicts().execute())
+    return jsonify(cj)
+
+
 
 
 @app_annotator.route("/codingjob/<job_id>/token", methods=['GET'])

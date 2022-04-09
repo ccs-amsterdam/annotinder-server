@@ -86,8 +86,6 @@ def set_job_settings(job_id):
     d = request.get_json(force=True)
     if 'restricted' in d: job.restricted = d['restricted']
     if 'archived' in d: job.archived = d['archived']
-    test = set_jobusers(codingjob_id=job_id, emails=['test@banaan.nl'])
-    print(test)
     job.save()
     return make_response(dict(restricted=job.restricted, archived=job.archived), 201)
 

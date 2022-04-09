@@ -7,7 +7,7 @@ from werkzeug.exceptions import HTTPException, Unauthorized, NotFound
 
 from amcat4annotator import auth, rules
 from amcat4annotator.db import create_codingjob, Unit, CodingJob, Annotation, User, STATUS, get_user_jobs, \
-    get_user_data, get_jobs, set_annotation, JobUser, add_jobusers
+    get_user_data, get_jobs, set_annotation, JobUser, get_jobusers, set_jobusers
 from amcat4annotator.auth import multi_auth, check_admin, check_job_user, get_jobtoken, verify_jobtoken
 
 app_annotator = Blueprint('app_annotator', __name__)
@@ -25,12 +25,6 @@ def _job(job_id: int):
     if not job:
         abort(404)
     return job
-
-def _user(user_id: int):
-    user = User.get_or_none(User.id == user_id)
-    if not user:
-        abort(404)
-    return user
 
 
 @app_annotator.route("/codingjob", methods=['POST'])
@@ -78,29 +72,38 @@ def create_job():
     return make_response(dict(id=job.id), 201)
 
 
-@app_annotator.route("/codingjob/<job_id>/archived", methods=['GET'])
+@app_annotator.route("/codingjob/<job_id>/settings", methods=['POST'])
 @multi_auth.login_required
-def set_job_archived(job_id):
+def set_job_settings(job_id):
     """
-    Toggle job.archived. Admin only. Archived jobs are no longer visible to coders.
+    Set job settings, and receive an object with all job settings. 
+    Payload should be an object where every settings is a key. Only the
+    settings that need to be changed have to be in the object. The 
+    returned object will always have all settings.
     """
     check_admin()
     job = _job(job_id)
-    job.archived = not job.archived
+    d = request.get_json(force=True)
+    if 'restricted' in d: job.restricted = d['restricted']
+    if 'archived' in d: job.archived = d['archived']
+    test = set_jobusers(codingjob_id=job_id, emails=['test@banaan.nl'])
+    print(test)
     job.save()
-    return make_response(dict(archived=job.archived), 201)
+    return make_response(dict(restricted=job.restricted, archived=job.archived), 201)
 
 
 @app_annotator.route("/codingjob/<job_id>/users", methods=['POST'])
 @multi_auth.login_required
-def add_job_users(job_id):
+def set_job_users(job_id):
     """
-    Add users to this coding job, creating them if they do not exist
+    Sets the users that can code the codingjob (if the codingjob is restricted).
+    If body has an only_add argument with value True, the provided list of emails is only added, and current users that are not in this list are kept.
+    Returns an array with all users.
     """
     check_admin()
     d = request.get_json(force=True)
-    add_jobusers(codingjob_id=job_id, emails=d['users'])
-    return make_response('', 204)
+    emails = set_jobusers(codingjob_id=job_id, emails=d['users'])
+    return make_response(dict(emails=emails), 201)
 
 
 @app_annotator.route("/codingjob/<job_id>", methods=['GET'])
@@ -137,6 +140,7 @@ def get_job_details(job_id):
     check_admin()
     job = _job(job_id)
     n_total = Unit.select().where(Unit.codingjob == job.id).count()
+    jobusers = get_jobusers(job.id)
     
     data = {
         "id": job_id,
@@ -147,6 +151,7 @@ def get_job_details(job_id):
         "created": job.created,
         "archived": job.archived,
         "n_total": n_total,
+        "users": jobusers
     }
  
     return jsonify(data)

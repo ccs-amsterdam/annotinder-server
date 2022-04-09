@@ -53,7 +53,7 @@ def create_codingjob(title: str, codebook: dict, provenance: dict, rules: dict, 
     ).execute()
     users = authorization.get('users', [])
     if users:
-        add_jobusers(codingjob_id=job.id, emails=users)
+        set_jobusers(codingjob_id=job.id, emails=users)
     return job
 
 
@@ -66,9 +66,7 @@ class Unit(Model):
 
     class Meta:
         database = db
-        indexes = (
-        (('codingjob', 'external_id'), True),  
-    )
+        indexes = ((('codingjob', 'external_id'), True),)
 
 
 class User(Model):
@@ -101,14 +99,38 @@ class JobUser(Model):
 
     class Meta:
         database = db
+        indexes = ((('user', 'job'), True),)
 
+def get_jobusers(codingjob_id: int) -> Iterable[str]:
+    jobusers = list(User.select(User.email).join(JobUser, JOIN.LEFT_OUTER).where(JobUser.job == codingjob_id))
+    return [u.email for u in jobusers]
 
-def add_jobusers(codingjob_id: int, emails: Iterable[str]):
+def set_jobusers(codingjob_id: int, emails: Iterable[str], only_add: bool = False) -> Iterable[str]:
+    """
+    Sets the users that can code the codingjob (if the codingjob is restricted).
+    If only_add is True, the provided list of emails is only added, and current users that are not in this list are kept.
+    Returns an array with all users.
+    """
+    emails = set(emails)
+    existing_emails = set(get_jobusers(codingjob_id))
+
     for email in emails:
+        if email in existing_emails:
+            continue
         user = User.get_or_none(User.email == email)
         if not user:
             user = User.create(email=email)
         JobUser.create(user=user, job_id=codingjob_id)
+
+    if only_add:
+        emails = emails.union(existing_emails)
+    else:
+        rm_emails = existing_emails - emails
+        for rm_email in rm_emails:
+            user = User.get_or_none(User.email == rm_email)
+            JobUser.delete().where((JobUser.user==user) & (JobUser.job==codingjob_id)).execute()
+
+    return list(emails)
 
 
 def get_units(codingjob_id: int) -> Iterable[Unit]:
@@ -123,6 +145,7 @@ def get_user_data():
     users = list(User.select())
     return [{"id": u.id, "is_admin": u.is_admin, "email": u.email} for u in users]
 
+
 def get_jobs() -> list:
     """
     Retrieve all jobs. Only basic meta data. 
@@ -132,12 +155,12 @@ def get_jobs() -> list:
     data.sort(key=lambda x: x.get('created'), reverse=True)
     return data
 
+
 def get_user_jobs(user_id: int) -> list:
     """
     Retrieve all user jobs, including progress
     """
-    jobs = list(CodingJob.select(CodingJob.id, CodingJob.title, CodingJob.created, CodingJob.archived).join(JobUser, JOIN.LEFT_OUTER).where(CodingJob.restricted == False or JobUser.user == user_id))
-
+    jobs = list(CodingJob.select(CodingJob.id, CodingJob.title, CodingJob.created, CodingJob.archived, JobUser.user).join(JobUser, JOIN.LEFT_OUTER).where((CodingJob.restricted == False) | (JobUser.user == user_id)))
     jobs_with_progress = []
     for job in jobs:
         if job.archived: continue

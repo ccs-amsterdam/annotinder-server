@@ -27,6 +27,15 @@ class JSONField(TextField):
         if value is not None:
             return json.loads(value)
 
+class User(Model):
+    id = AutoField()
+    email = CharField(max_length=512)
+    is_admin = BooleanField(default=False)
+    restricted_job = IntegerField(default=None, null=True)
+    password = CharField(max_length=512, null=True)
+
+    class Meta:
+        database = db
 
 class CodingJob(Model):
     id = AutoField()
@@ -34,6 +43,7 @@ class CodingJob(Model):
     codebook = JSONField()
     provenance = JSONField()
     rules = JSONField()
+    creator = ForeignKeyField(User, on_delete='CASCADE')
     restricted = BooleanField(default=False)
     created = DateTimeField(default=datetime.datetime.now())
     archived = BooleanField(default=False)
@@ -42,12 +52,12 @@ class CodingJob(Model):
         database = db
 
 
-def create_codingjob(title: str, codebook: dict, provenance: dict, rules: dict, units: List[dict],
+def create_codingjob(title: str, codebook: dict, provenance: dict, rules: dict, creator: User, units: List[dict],
                      authorization: Optional[dict]=None) -> int:
     if authorization is None:
         authorization = {}
     restricted = authorization.get('restricted', False)
-    job = CodingJob.create(title=title, codebook=codebook, rules=rules, provenance=provenance, restricted=restricted)
+    job = CodingJob.create(title=title, codebook=codebook, rules=rules, creator=creator, provenance=provenance, restricted=restricted)
     Unit.insert_many(
         [{'codingjob': job, 'external_id': u['id'], 'unit': u['unit'], 'gold': u.get('gold')} for u in units]
     ).execute()
@@ -69,16 +79,6 @@ class Unit(Model):
         indexes = ((('codingjob', 'external_id'), True),)
 
 
-class User(Model):
-    id = AutoField()
-    email = CharField(max_length=512)
-    is_admin = BooleanField(default=False)
-    password = CharField(max_length=512, null=True)
-
-    class Meta:
-        database = db
-
-
 class Annotation(Model):
     id = AutoField()
     unit = ForeignKeyField(Unit, on_delete='CASCADE')
@@ -94,8 +94,7 @@ class Annotation(Model):
 class JobUser(Model):
     user = ForeignKeyField(User, on_delete='CASCADE')
     job = ForeignKeyField(CodingJob, on_delete='CASCADE')
-    is_admin = BooleanField(default=False)
-    hidden = BooleanField(default=False)
+    is_owner = BooleanField(default=False)
 
     class Meta:
         database = db
@@ -150,8 +149,8 @@ def get_jobs() -> list:
     """
     Retrieve all jobs. Only basic meta data. 
     """
-    jobs = list(CodingJob.select(CodingJob.id, CodingJob.title, CodingJob.created, CodingJob.archived))
-    data = [dict(id= job.id, title= job.title, created= job.created, archived= job.archived) for job in jobs]
+    jobs = list(CodingJob.select())
+    data = [dict(id= job.id, title= job.title, created= job.created, archived= job.archived, creator=job.creator.email) for job in jobs]
     data.sort(key=lambda x: x.get('created'), reverse=True)
     return data
 
@@ -160,18 +159,24 @@ def get_user_jobs(user_id: int) -> list:
     """
     Retrieve all user jobs, including progress
     """
-    jobs = list(CodingJob.select(CodingJob.id, CodingJob.title, CodingJob.created, CodingJob.archived, JobUser.user).join(JobUser, JOIN.LEFT_OUTER).where((CodingJob.restricted == False) | (JobUser.user == user_id)))
+    user = User.get(User.id == user_id)
+    if user.restricted_job is not None:
+        jobs = list(CodingJob.select().where(CodingJob.id == user.restricted_job))
+    else:
+        open_jobs = list(CodingJob.select().where(CodingJob.restricted == False))
+        restricted_jobs = list(CodingJob.select().join(JobUser, JOIN.LEFT_OUTER).where((CodingJob.restricted == True) & (JobUser.user == user_id)))
+        jobs = open_jobs + restricted_jobs
+
     jobs_with_progress = []
     for job in jobs:
         if job.archived: continue
-        data = {"id": job.id, "title": job.title, "created": job.created}
+        data = {"id": job.id, "title": job.title, "created": job.created, "creator": job.creator.email}
         data["n_total"] = Unit.select().where(Unit.codingjob == job.id).count()
 
         annotations = Annotation.select().join(Unit).where(Unit.codingjob == job.id, Annotation.coder == user_id, Annotation.status != 'IN_PROGRESS')
         data["n_coded"] = annotations.count()
         data["modified"] = annotations.select(fn.MAX(Annotation.modified)).scalar() or 'NEW'
         jobs_with_progress.append(data)
-
 
     now = datetime.datetime.now()
     jobs_with_progress.sort(key=lambda x: x.get('created') if x.get('modified') == 'NEW' else x.get('modified'), reverse=True)

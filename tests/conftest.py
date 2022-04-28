@@ -38,7 +38,8 @@ def password_user():
 def job():
     # TODO: no idea why create_codingjob yields an int - probably should standardize and refactor all db functions
     #       into a separate module and use only model objects
-    job = create_codingjob(title="test", codebook=CODEBOOK, provenance=PROVENANCE, units=UNITS, rules=RULES).id
+    u = User.create(email="batman@example.com", password="secret")
+    job = create_codingjob(title="test", codebook=CODEBOOK, provenance=PROVENANCE, units=UNITS, rules=RULES, creator=u).id
     yield job
     CodingJob.delete_by_id(job)
 

@@ -97,11 +97,18 @@ def app_verify_token(token) -> bool:
     return bool(u)
 
 
-def check_admin():
+def check_admin(job: Optional[CodingJob]=None):
     if not g.current_user.is_admin:
         raise Unauthorized("Admin rights required")
-
+    
+def check_job_owner(job: CodingJob):
+    if not JobUser.select().where((JobUser.user == g.current_user) & (JobUser.job == job) & (JobUser.is_owner == True)).exists():
+        raise Unauthorized("User not authorized to manage job")
 
 def check_job_user(job: CodingJob):
-    if job.restricted and not JobUser.select().where(JobUser.user == g.current_user, JobUser.job == job).exists():
-        raise Unauthorized("User not authorized for job")
+    if g.current_user.restricted_job is not None:
+        if g.current_user.restricted_job != job.id: 
+            raise Unauthorized("User not authorized to code job")
+    else:      
+        if job.restricted and not JobUser.select().where((JobUser.user == g.current_user) & (JobUser.job == job)).exists():
+            raise Unauthorized("User not authorized to code job")

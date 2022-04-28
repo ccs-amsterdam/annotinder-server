@@ -68,7 +68,7 @@ def create_job():
     if {"title", "codebook", "units", "rules"} - set(job.keys()):
         return make_response({"error": "Codinjob is missing keys"}, 400)
     job = create_codingjob(title=job['title'], codebook=job['codebook'], provenance=job.get('provenance'),
-                           rules=job['rules'], units=job['units'], authorization=job.get('authorization'))
+                           rules=job['rules'], creator=g.current_user, units=job['units'], authorization=job.get('authorization'))
     return make_response(dict(id=job.id), 201)
 
 
@@ -198,8 +198,9 @@ def redeem_job_token():
     email = f"jobuser__{job.id}__{user_id}"
     user = User.get_or_none(User.email == email)
     if not user:
-        user = User.create(email=email)
+        user = User.create(email=email, restricted_job=job)
     return jsonify({"token": auth.get_token(user),
+                    "job_id": job.id,
                     "email": user.email,
                     "is_admin": user.is_admin})
 
@@ -283,7 +284,8 @@ def get_my_token():
     """
     return jsonify({"token": auth.get_token(g.current_user),
                     "email": g.current_user.email,
-                    "is_admin": g.current_user.is_admin})
+                    "is_admin": g.current_user.is_admin,
+                    "restricted_job": g.current_user.restricted_job})
 
 
 @app_annotator.route("/codingjobs", methods=['GET'])

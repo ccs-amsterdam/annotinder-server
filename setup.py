@@ -6,7 +6,7 @@ setup(
     name="amcat4annotator",
     version="0.20",
     description="Annotator Backend API for AmCAT4 Text Analysis",
-    author="Wouter van Atteveldt, Farzam Fanitabasi",
+    author="Wouter van Atteveldt, Farzam Fanitabasi, Kasper Welbers",
     author_email="wouter@vanatteveldt.com",
     packages=["amcat4annotator"],
     include_package_data=True,

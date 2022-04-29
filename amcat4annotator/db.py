@@ -171,7 +171,11 @@ def get_user_jobs(user_id: int) -> list:
     for job in jobs:
         if job.archived: continue
         data = {"id": job.id, "title": job.title, "created": job.created, "creator": job.creator.email}
-        data["n_total"] = Unit.select().where(Unit.codingjob == job.id).count()
+        
+        if 'units_per_coder' in job.rules:
+            data["n_total"] = job.rules['units_per_coder']
+        else:
+            data["n_total"] = Unit.select().where(Unit.codingjob == job.id).count()
 
         annotations = Annotation.select().join(Unit).where(Unit.codingjob == job.id, Annotation.coder == user_id, Annotation.status != 'IN_PROGRESS')
         data["n_coded"] = annotations.count()

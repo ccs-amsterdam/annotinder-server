@@ -1,13 +1,12 @@
 import hashlib
 import logging
 
-
 from flask import Blueprint, request, abort, make_response, jsonify, g
 from werkzeug.exceptions import HTTPException, Unauthorized, NotFound
 
 from amcat4annotator import auth, rules
-from amcat4annotator.db import create_codingjob, Unit, CodingJob, Annotation, User, STATUS, get_user_jobs, \
-    get_user_data, get_jobs, set_annotation, JobUser, get_jobusers, set_jobusers
+from amcat4annotator.db import create_codingjob, Unit, CodingJob, Annotation, User, get_user_jobs, \
+    get_user_data, get_jobs, set_annotation, get_jobusers, set_jobusers
 from amcat4annotator.auth import multi_auth, check_admin, check_job_user, get_jobtoken, verify_jobtoken
 
 app_annotator = Blueprint('app_annotator', __name__)
@@ -125,7 +124,7 @@ def get_job(job_id):
     }
     if annotations:
         cj['annotations'] = list(Annotation.select(Annotation).join(Unit)
-                 .where(Unit.codingjob==job).tuples().dicts().execute())
+                 .where(Unit.codingjob == job).tuples().dicts().execute())
     return jsonify(cj)
 
 

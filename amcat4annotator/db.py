@@ -3,7 +3,7 @@ import os
 import sys
 import datetime
 from enum import Enum
-from typing import List, Iterable, Optional
+from typing import List, Iterable, Optional, Any
 
 from peewee import DateTimeField, Model, CharField, IntegerField, SqliteDatabase, AutoField, TextField, ForeignKeyField, DoesNotExist, \
     BooleanField, fn, JOIN

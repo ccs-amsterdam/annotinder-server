@@ -55,22 +55,83 @@ class RuleSet:
 
     @property
     def can_seek_backwards(self):
+        if 'can_seek_backwards' in self.rules: return self.rules['can_seek_backwards']
         return True
 
     @property
     def can_seek_forwards(self):
+        if 'can_seek_forwards' in self.rules: return self.rules['can_seek_forwards']
         return False
 
     def n_coded(self, job: CodingJob, coder: User): 
         return Annotation.select().join(Unit).where(Unit.codingjob == job.id, Annotation.coder == coder.id, Annotation.status != 'IN_PROGRESS').count()
 
     def n_total(self, job: CodingJob, coder: User):
-        return Unit.select().where(Unit.codingjob == job.id).count()
+        n_units = Unit.select().where(Unit.codingjob == job.id).count()
+        if 'units_per_coder' in self.rules: 
+            return min(self.rules['units_per_coder'], n_units)
+        return n_units
+
+class FixedSet(RuleSet):
+    """
+    Each coder receives the units in the same order as loaded into the DB.
+    """
+    def get_next_unit(self, job: CodingJob, coder: User) -> Tuple[Optional[Unit], int]:
+        unit_index = self.n_coded(job, coder)
+        if unit_index >= self.n_total(job, coder):
+            return None, unit_index
+
+        # (1) Is there a unit currently IN_PROGRESS?
+        in_progress = list(
+            Unit.select()
+            .join(Annotation, JOIN.LEFT_OUTER)
+            .where(Unit.codingjob == job.id, Annotation.coder == coder.id, Annotation.status == 'IN_PROGRESS')
+            .limit(1).execute())
+        if in_progress:
+            return in_progress[0], unit_index
+
+        # (2) select the next unit that is uncoded by me
+        coded = {t[0] for t in Annotation.select(Unit.id).join(Unit).
+            filter(Unit.codingjob == job.id,
+                   Annotation.coder == coder.id).tuples()}
+        uncoded = list(
+            Unit.select()
+            .where(Unit.codingjob == job.id, Unit.id.not_in(coded))
+            .group_by(Unit.id)
+            .limit(1))
+
+        if uncoded:
+            return uncoded[0], unit_index
+
+        return None, unit_index
+
+    def seek_unit(self, job: CodingJob, coder: User, index: int) -> Optional[Unit]:
+        if index >= self.n_total(job, coder):
+            return None
+
+        if not self.can_seek_forwards or not self.can_seek_backwards:
+            coded = sorted(Annotation.select(Annotation.id, Unit.id).join(Unit)
+                           .filter(Unit.codingjob == job.id, Annotation.coder == coder.id)
+                           .tuples())
+
+            if self.can_seek_forwards == False & index >= len(coded):
+                return None
+            if self.can_seek_backwards == False & index < len(coded): 
+                return None
+            return Unit.get_by_id(coded[index][1])
+        else:
+            units = Unit.select().where(Unit.codingjob == job.id)
+            return units[index]
 
 
 class CrowdCoding(RuleSet):
-    def get_next_unit(self, job: CodingJob, coder: User) -> Optional[Unit]:
+    """
+    Prioritizes coding the entire set as fast as possible using multiple coders.
+    """
+    def get_next_unit(self, job: CodingJob, coder: User) -> Tuple[Optional[Unit], int]:
         unit_index = self.n_coded(job, coder)
+        if unit_index >= self.n_total(job, coder):
+            return None, unit_index
 
         # (1) Is there a unit currently IN_PROGRESS?
         in_progress = list(
@@ -110,17 +171,23 @@ class CrowdCoding(RuleSet):
         return None, unit_index
 
     def seek_unit(self, job: CodingJob, coder: User, index: int) -> Optional[Unit]:
+        if index >= self.n_total(job, coder):
+            return None
+
         coded = sorted(Annotation.select(Annotation.id, Unit.id).join(Unit)
                        .filter(Unit.codingjob == job.id, Annotation.coder == coder.id)
                        .tuples())
         if index >= len(coded):
             return None
+        if self.can_seek_backwards == False & index < len(coded): 
+                return None
         return Unit.get_by_id(coded[index][1])
 
 
 def get_ruleset(rules: dict) -> RuleSet:
     ruleset_class = {
         'crowdcoding': CrowdCoding,
+        'fixedset': FixedSet,
     }[rules['ruleset']]
     return ruleset_class(rules)
 

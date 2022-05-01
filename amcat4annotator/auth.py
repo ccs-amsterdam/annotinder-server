@@ -5,16 +5,57 @@ from typing import Optional
 from authlib.jose import JsonWebSignature
 import bcrypt
 from authlib.jose.errors import DecodeError
-from flask_httpauth import HTTPBasicAuth, HTTPTokenAuth, MultiAuth, g
-from werkzeug.exceptions import Unauthorized
+
+from fastapi import HTTPException
+from fastapi.params import Depends
+from fastapi.security import OAuth2PasswordBearer
 
 from amcat4annotator.db import User, CodingJob, JobUser
 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/users/me/token")
+
+
 SECRET_KEY = "not very secret, sorry"
 
-basic_auth = HTTPBasicAuth()
-token_auth = HTTPTokenAuth()
-multi_auth = MultiAuth(basic_auth, token_auth)
+
+async def authenticated_user(token: str = Depends(oauth2_scheme)) -> User:
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid token")
+    return user
+
+def check_admin(user: User) -> None:
+    if not user.is_admin:
+        raise HTTPException(status_code=401, detail="Admin rights required")
+
+def check_job_owner(user: User, job: CodingJob):
+    if not JobUser.select().where((JobUser.user == user) & (JobUser.job == job) & (JobUser.is_owner == True)).exists():
+        raise HTTPException(status_code=401, detail="User not authorized to manage job")
+
+def check_job_user(user: User, job: CodingJob):
+    if user.restricted_job is not None:
+        if user.restricted_job != job.id: 
+            raise HTTPException(status_code=401, detail="User not authorized to code job")
+    else:      
+        if job.restricted and not JobUser.select().where((JobUser.user == user) & (JobUser.job == job)).exists():
+            raise HTTPException(status_code=401, detail="User not authorized to code job")
+
+
+
+
+def verify_password(username, password):
+    u = User.get_or_none(User.email == username)
+    if not u:
+        logging.warning(f"User {u} does not exist")
+        return None
+    elif not u.password:
+        logging.warning(f"Password for {u} is missing")
+        return None
+    elif not bcrypt.checkpw(password.encode("utf-8"), u.password.encode("utf-8")):
+        logging.warning(f"Password for {u} did not match")
+        return None
+    else:
+        return u
 
 
 def _get_token(payload: dict) -> str:
@@ -64,13 +105,7 @@ def verify_jobtoken(token: str) -> Optional[CodingJob]:
 
 
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("ascii")
-
-
-def verify_password(user: User, password: str) -> bool:
-    if not user.password:
-        return False
-    return bcrypt.checkpw(password.encode("utf-8"), user.password.encode("ascii"))
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def change_password(user: User, password: str):
@@ -78,37 +113,4 @@ def change_password(user: User, password: str):
     user.save()
 
 
-@basic_auth.verify_password
-def app_verify_password(username, password):
-    u = User.get_or_none(User.email == username)
-    if not u:
-        logging.warning(f"User {u} does not exist")
-    elif not verify_password(u, password):
-        logging.warning(f"Password for {u} did not match")
-    else:
-        g.current_user = u
-        return True
 
-
-@token_auth.verify_token
-def app_verify_token(token) -> bool:
-    u = verify_token(token)
-    g.current_user = u
-    return bool(u)
-
-
-def check_admin(job: Optional[CodingJob]=None):
-    if not g.current_user.is_admin:
-        raise Unauthorized("Admin rights required")
-    
-def check_job_owner(job: CodingJob):
-    if not JobUser.select().where((JobUser.user == g.current_user) & (JobUser.job == job) & (JobUser.is_owner == True)).exists():
-        raise Unauthorized("User not authorized to manage job")
-
-def check_job_user(job: CodingJob):
-    if g.current_user.restricted_job is not None:
-        if g.current_user.restricted_job != job.id: 
-            raise Unauthorized("User not authorized to code job")
-    else:      
-        if job.restricted and not JobUser.select().where((JobUser.user == g.current_user) & (JobUser.job == job)).exists():
-            raise Unauthorized("User not authorized to code job")

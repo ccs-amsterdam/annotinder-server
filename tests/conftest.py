@@ -1,17 +1,20 @@
 import json
-
 import pytest
+from fastapi.testclient import TestClient
 
 import amcat4annotator
 from amcat4annotator import auth
 from amcat4annotator.db import User, create_codingjob, CodingJob
 
-UNITS = [{"unit": {"text": "unit1"}},
-         {"unit": {"text": "unit2"}, "gold": {"element": "au"}}]
+UNITS = [{"id": 1, "unit": {"text": "unit1"}},
+         {"id": 2, "unit": {"text": "unit2"}, "gold": {"element": "au"}}]
 CODEBOOK = {"foo": "bar"}
 PROVENANCE = {"bar": "foo"}
 RULES = {"ruleset": "crowdcoding"}
 
+@pytest.fixture()
+def client():
+    return TestClient(amcat4annotator.app)
 
 @pytest.fixture()
 def user():
@@ -49,26 +52,28 @@ def app():
     return amcat4annotator.app
 
 
-def _build_headers(headers=None, user=None):
+def build_headers(user=None, headers=None, password=None):
     if not headers:
         headers = {}
-    if user:
+    if user and password:
+        raise Exception("Sorry! We don't do that here")
+    elif user:
         headers['Authorization'] = f"Bearer {auth.get_token(user)}"
     return headers
 
 
-def get_json(client, url, expected=200, headers=None, user=None, **kargs):
-    headers = _build_headers(headers, user)
-    response = client.get(url, headers=headers, **kargs)
-    assert response.status_code == expected
-    return json.loads(response.get_data(as_text=True))
+def get_json(client: TestClient, url, expected=200, headers=None, user=None, **kargs):
+    """Get the given URL. If expected is 2xx, return the result as parsed json"""
+    response = client.get(url, headers=build_headers(user, headers), **kargs)
+    assert response.status_code == expected, \
+        f"GET {url} returned {response.status_code}, expected {expected}, {response.json()}"
+    if expected // 100 == 2:
+        return response.json()
 
 
-def post_json(client, url, data, expected=201, user=None, headers=None, content_type='application/json', decode=None,
-              **kargs):
-    headers = _build_headers(headers, user)
-    response = client.post(url, data=json.dumps(data), headers=headers, content_type=content_type, **kargs)
-    assert response.status_code == expected
-    decode = (expected != 204) if decode is None else decode
-    if decode:
-        return json.loads(response.get_data(as_text=True))
+def post_json(client: TestClient, url, expected=201, headers=None, user=None, **kargs):
+    response = client.post(url, headers=build_headers(user, headers), **kargs)
+    assert response.status_code == expected, f"POST {url} returned {response.status_code}, expected {expected}\n" \
+                                             f"{response.json()}"
+    return response.json()
+

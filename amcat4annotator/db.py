@@ -155,16 +155,15 @@ def get_jobs() -> list:
     return data
 
 
-def get_user_jobs(user_id: int) -> list:
+def get_user_jobs(user: User) -> list:
     """
     Retrieve all user jobs, including progress
     """
-    user = User.get(User.id == user_id)
     if user.restricted_job is not None:
         jobs = list(CodingJob.select().where(CodingJob.id == user.restricted_job))
     else:
         open_jobs = list(CodingJob.select().where(CodingJob.restricted == False))
-        restricted_jobs = list(CodingJob.select().join(JobUser, JOIN.LEFT_OUTER).where((CodingJob.restricted == True) & (JobUser.user == user_id)))
+        restricted_jobs = list(CodingJob.select().join(JobUser, JOIN.LEFT_OUTER).where((CodingJob.restricted == True) & (JobUser.user == user.id)))
         jobs = open_jobs + restricted_jobs
 
     jobs_with_progress = []
@@ -177,12 +176,11 @@ def get_user_jobs(user_id: int) -> list:
         else:
             data["n_total"] = Unit.select().where(Unit.codingjob == job.id).count()
 
-        annotations = Annotation.select().join(Unit).where(Unit.codingjob == job.id, Annotation.coder == user_id, Annotation.status != 'IN_PROGRESS')
+        annotations = Annotation.select().join(Unit).where(Unit.codingjob == job.id, Annotation.coder == user.id, Annotation.status != 'IN_PROGRESS')
         data["n_coded"] = annotations.count()
         data["modified"] = annotations.select(fn.MAX(Annotation.modified)).scalar() or 'NEW'
         jobs_with_progress.append(data)
 
-    now = datetime.datetime.now()
     jobs_with_progress.sort(key=lambda x: x.get('created') if x.get('modified') == 'NEW' else x.get('modified'), reverse=True)
     return jobs_with_progress
 

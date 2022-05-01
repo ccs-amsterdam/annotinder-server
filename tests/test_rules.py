@@ -9,13 +9,13 @@ def test_crowdcoding_next(job: int, user: User):
     Do we get the next uncoded unit for a crowd coder?
     """
     job = CodingJob.get_by_id(job)
-    u = get_next_unit(job, user)
+    u, index = get_next_unit(job, user)
     assert u.unit['text'] in {"unit1", "unit2"}
     set_annotation(u.id, user.email, {})
-    u2 = get_next_unit(job, user)
+    u2, index = get_next_unit(job, user)
     assert {u.unit['text'], u2.unit['text']} == {"unit1", "unit2"}
     set_annotation(u2.id, user.email, {})
-    u3 = get_next_unit(job, user)
+    u3, index = get_next_unit(job, user)
     assert u3 is None
 
 
@@ -24,11 +24,11 @@ def test_crowdcoding_next_leastcoded(job: int, user: User, admin_user: User, pas
     job = CodingJob.get_by_id(job)
     units = list(get_units(job.id))
     set_annotation(units[0].id, admin_user.email, {})
-    u = get_next_unit(job, user)
+    u, index = get_next_unit(job, user)
     assert u == units[1]
     set_annotation(units[0].id, password_user.email, {})
     set_annotation(units[1].id, password_user.email, {})
-    u = get_next_unit(job, user)
+    u, index = get_next_unit(job, user)
     assert u == units[1]
 
 

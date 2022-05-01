@@ -18,9 +18,7 @@ setup(
         "Topic :: Text Processing",
     ],
     install_requires=[
-        "Flask",
-        "Flask-HTTPAuth",
-        "flask-cors",
+        "fastapi",
         "peewee",
         'authlib',
         'bcrypt'
@@ -28,7 +26,6 @@ setup(
     extras_require={
         'dev': [
             'pytest',
-            'pytest-flask',
             'codecov',
         ]
     },

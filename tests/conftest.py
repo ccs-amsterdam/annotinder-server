@@ -1,10 +1,10 @@
-import json
 import pytest
 from fastapi.testclient import TestClient
 
 import amcat4annotator
 from amcat4annotator import auth
 from amcat4annotator.db import User, create_codingjob, CodingJob
+
 
 UNITS = [{"id": 1, "unit": {"text": "unit1"}},
          {"id": 2, "unit": {"text": "unit2"}, "gold": {"element": "au"}}]
@@ -75,5 +75,6 @@ def post_json(client: TestClient, url, expected=201, headers=None, user=None, **
     response = client.post(url, headers=build_headers(user, headers), **kargs)
     assert response.status_code == expected, f"POST {url} returned {response.status_code}, expected {expected}\n" \
                                              f"{response.json()}"
-    return response.json()
+    if not expected == 204:
+        return response.json()
 

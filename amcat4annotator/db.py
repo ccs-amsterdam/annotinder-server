@@ -7,17 +7,14 @@ from typing import List, Iterable, Optional, Any
 
 from peewee import DateTimeField, Model, CharField, IntegerField, SqliteDatabase, AutoField, TextField, ForeignKeyField, DoesNotExist, \
     BooleanField, fn, JOIN
-import logging
-
 
 STATUS = Enum('Status', ['NOT_STARTED', 'IN_PROGRESS', 'DONE', 'SKIPPED'])
 
-db_name = os.environ.get("ANNOTATOR_DB_NAME")
+db_name = os.environ.get("ANNOTATOR_DB_NAME", "annotator.db")
 if not db_name:
     print(f"Note: Using database {db_name}, user ANNOTATOR_DB_NAME to change", file=sys.stderr)
     db_name = ":memory:"
 db = SqliteDatabase(db_name, pragmas={'foreign_keys': 1})
-
 
 class JSONField(TextField):
     def db_value(self, value):

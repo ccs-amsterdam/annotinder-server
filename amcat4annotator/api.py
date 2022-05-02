@@ -1,9 +1,8 @@
 import hashlib
-import logging
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Response
 from fastapi.params import Query, Body, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 
@@ -135,6 +134,7 @@ def set_job_users(job_id: int,
     """
     check_admin(user)
     set_jobusers(codingjob_id=job_id, emails=users, only_add=only_add)
+    return Response(status_code=204)
 
 
 @app_annotator.get("/codingjob/{job_id}")
@@ -298,6 +298,7 @@ def post_annotation(job_id: int,
     if not annotation:
         HTTPException(status_code=400, detail='')
     a = set_annotation(unit.id, coder=user.email, annotation=annotation, status=status)
+    return Response(status_code=204)
     
 @app_annotator.get("/codingjobs")
 def get_all_jobs(user: User = Depends(auth.authenticated_user)):
@@ -331,7 +332,7 @@ def get_users(user: User = Depends(auth.authenticated_user)):
     return {"users": users}
 
 
-@app_annotator.post("/users", status_code=201)
+@app_annotator.post("/users", status_code=204)
 def add_users(users: list = Body(None, description="An array of dictionaries with the keys: email, password, admin", embed=True),  ## notice the embed, because users is (currently) only key in body
               user: User = Depends(auth.authenticated_user)):
     check_admin(user)
@@ -345,11 +346,11 @@ def add_users(users: list = Body(None, description="An array of dictionaries wit
             continue
         password = auth.hash_password(user['password']) if user['password'] else None
         u = User.create(email=user['email'], is_admin=user['admin'], password=password)
-    return HTTPException(status_code=204, detail='')
+    return Response(status_code=204)
 
 
 
-@app_annotator.post("/password", status_code=201)
+@app_annotator.post("/password", status_code=204)
 def set_password(password: str = Body(None, description="The new password"),
                  email: Optional[str] = Body(None, description="The email of the user for who to set the password (admin only)"),
                  user: User = Depends(auth.authenticated_user)):
@@ -366,7 +367,7 @@ def set_password(password: str = Body(None, description="The new password"),
 
     user.password = auth.hash_password(password)
     user.save()
-    return make_response('', 204)
+    return Response(status_code=204)
 
 # TODO
 # - redeem_jobtoken moet user kunnen creeren vor een 'job token' (en email/id teruggeven) [untested]

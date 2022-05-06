@@ -14,9 +14,9 @@ app = FastAPI(
   title="AmCAT4Annotator",
   description=__doc__,
   openapi_tags=[
-    dict(name="annotator/users", description="Endpoints for user authentication and management, and getting user specific data"),
-    dict(name="annotator/codingjob", description="Endpoints for creating and managing codingjobs, and the core process of getting units and posting annotations"),
-    dict(name="annotator/guest", description="Endpoints for unregistered guests"),
+    dict(name="annotator users", description="Endpoints for user management"),
+    dict(name="annotator codingjob", description="Endpoints for creating and managing codingjobs, and the core process of getting units and posting annotations"),
+    dict(name="annotator guest", description="Endpoints for unregistered guests"),
   ]
 )
 

@@ -8,7 +8,7 @@ from amcat4annotator import auth, rules
 from amcat4annotator.db import Unit, Annotation, User, get_user_jobs, get_user_data
 from amcat4annotator.auth import check_admin
 
-app_annotator_users = APIRouter(prefix="/users", tags=["annotator/users"])
+app_annotator_users = APIRouter(prefix="/users", tags=["annotator users"])
 
 
 @app_annotator_users.post("/me/token", status_code=200)

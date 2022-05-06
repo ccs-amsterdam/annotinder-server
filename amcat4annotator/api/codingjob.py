@@ -8,7 +8,7 @@ from amcat4annotator import auth, rules
 from amcat4annotator.db import create_codingjob, Unit, Annotation, User, get_jobs, set_annotation, get_job_coders, set_job_coders
 from amcat4annotator.auth import check_admin, check_job_user, get_jobtoken, verify_jobtoken
 
-app_annotator_codingjob = APIRouter(prefix='/codingjob', tags=["annotator/codingjob"])
+app_annotator_codingjob = APIRouter(prefix='/codingjob', tags=["annotator codingjob"])
 
 @app_annotator_codingjob.post("", status_code=201)
 def create_job(title: str = Body(None, description = 'The title of the codingjob'),

@@ -6,17 +6,17 @@ from fastapi.params import Query, Body, Depends
 from amcat4annotator.api.common import _job
 from amcat4annotator import auth, rules
 from amcat4annotator.db import create_codingjob, Unit, Annotation, User, get_jobs, set_annotation, get_job_coders, set_job_coders
-from amcat4annotator.auth import check_admin, check_job_user, get_jobtoken, verify_jobtoken
+from amcat4annotator.auth import check_admin, check_job_user, get_jobtoken
 
 app_annotator_codingjob = APIRouter(prefix='/codingjob', tags=["annotator codingjob"])
 
 @app_annotator_codingjob.post("", status_code=201)
-def create_job(title: str = Body(None, description = 'The title of the codingjob'),
-               codebook: dict = Body(None, description = 'The codebook'),
-               units: list = Body(None, description = 'The units'),
-               rules: dict = Body(None, description = 'The rules'),
-               authorization: dict = Body(None, description = 'A dictionnary containing authorization settings'),
-               provenance: dict = Body(None, description = 'A dictionary containing any information about the units'),
+def create_job(title: str = Body(None, description='The title of the codingjob'),
+               codebook: dict = Body(None, description='The codebook'),
+               units: list = Body(None, description='The units'),
+               rules: dict = Body(None, description='The rules'),
+               authorization: dict = Body(None, description='A dictionnary containing authorization settings'),
+               provenance: dict = Body(None, description='A dictionary containing any information about the units'),
                user: User = Depends(auth.authenticated_user)):
     """
     Create a new codingjob. Body should be json structured as follows:

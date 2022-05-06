@@ -37,7 +37,7 @@ def check_job_user(user: User, job: CodingJob):
         if user.restricted_job != job.id: 
             raise HTTPException(status_code=401, detail="User not authorized to code job")
     else:      
-        if job.restricted and not JobUser.select().where((JobUser.user == user) & (JobUser.job == job)).exists():
+        if job.restricted and not JobUser.select().where(JobUser.user == user, JobUser.job == job, JobUser.can_code == True).exists():
             raise HTTPException(status_code=401, detail="User not authorized to code job")
 
 

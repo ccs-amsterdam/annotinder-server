@@ -29,9 +29,9 @@ class RuleSet:
     def get_progress(self, job: CodingJob, coder: User) -> dict:
         """
         Return the progress report for this job, including seek permissions
-        """        
+        """              
         return dict(
-            n_coded=self.n_coded(job, coder),
+            n_coded=self.coded(job, coder).count(),
             n_total=self.n_total(job, coder),
             seek_backwards=self.can_seek_backwards,
             seek_forwards=self.can_seek_forwards,
@@ -63,23 +63,36 @@ class RuleSet:
         if 'can_seek_forwards' in self.rules: return self.rules['can_seek_forwards']
         return False
 
-    def n_coded(self, job: CodingJob, coder: User): 
-        return Annotation.select().join(Unit).where(Unit.codingjob == job.id, Annotation.coder == coder.id, Annotation.status != 'IN_PROGRESS').count()
+    def units(self, job: CodingJob):
+        """
+        Get all units in a job
+        """
+        return Unit.select().where(Unit.codingjob == job.id)
+
+    def coded(self, job: CodingJob, coder: User): 
+        """
+        Get coded units for a given job and user
+        """
+        return Annotation.select().join(Unit).where(Unit.codingjob == job.id, Annotation.coder == coder.id, Annotation.status != 'IN_PROGRESS')
 
     def n_total(self, job: CodingJob, coder: User):
-        n_units = Unit.select().where(Unit.codingjob == job.id).count()
-        if 'units_per_coder' in self.rules: 
-            return min(self.rules['units_per_coder'], n_units)
-        return n_units
+        """
+        Total number of units that a user can code.
+        This is separate from just unsing self.units().count() because a coder might not have access to all units 
+        """
+        return self.units(job, coder).count()
+
+        
+## Currently broken!!!
+## was working on external ids
+## probably need to add a conditional around 109, to either use self.external_ids() and then GET or self.units()
 
 class FixedSet(RuleSet):
     """
     Each coder receives the units in the same order as loaded into the DB.
     """
     def get_next_unit(self, job: CodingJob, coder: User) -> Tuple[Optional[Unit], int]:
-        unit_index = self.n_coded(job, coder)
-        if unit_index >= self.n_total(job, coder):
-            return None, unit_index
+        unit_index = self.coded(job, coder).count()
 
         # (1) Is there a unit currently IN_PROGRESS?
         in_progress = list(
@@ -90,38 +103,75 @@ class FixedSet(RuleSet):
         if in_progress:
             return in_progress[0], unit_index
 
-        # (2) select the next unit that is uncoded by me
-        coded = {t[0] for t in Annotation.select(Unit.id).join(Unit).
-            filter(Unit.codingjob == job.id,
-                   Annotation.coder == coder.id).tuples()}
-        uncoded = list(
-            Unit.select()
-            .where(Unit.codingjob == job.id, Unit.id.not_in(coded))
-            .group_by(Unit.id)
-            .limit(1))
-
-        if uncoded:
-            return uncoded[0], unit_index
-
-        return None, unit_index
+        # (2) select the next unit
+        return self.get_unit(job, coder, unit_index), unit_index
 
     def seek_unit(self, job: CodingJob, coder: User, index: int) -> Optional[Unit]:
-        if index >= self.n_total(job, coder):
-            return None
-
+        # (1) if seeking is restricted, return None if restriction is violated
         if not self.can_seek_forwards or not self.can_seek_backwards:
-            coded = sorted(Annotation.select(Annotation.id, Unit.id).join(Unit)
-                           .filter(Unit.codingjob == job.id, Annotation.coder == coder.id)
-                           .tuples())
+            coded = self.coded(job, coder).count()
+            if self.can_seek_forwards == False & index >= coded:
+                return None
+            if self.can_seek_backwards == False & index < coded: 
+                return None
 
-            if self.can_seek_forwards == False & index >= len(coded):
-                return None
-            if self.can_seek_backwards == False & index < len(coded): 
-                return None
-            return Unit.get_by_id(coded[index][1])
+        # (2) retrieve the unit
+        return self.get_unit(job, coder, index)
+
+    def n_total(self, job: CodingJob, coder: User):
+        # If sets are specified, n is set length. Otherwise n is total number of units
+
+        # We call get_unit_set with create_if_new = False to prevent that the user is assigned
+        # to a set if they only viewed the number of items in the job. Note that this also means
+        # that a coder might see that a job has x number of units, but if they start the number 
+        # might be different if in the meantime another coder started the job (and number of items per set are different)
+        unit_set = self.get_unit_set(job, coder, False)
+        if unit_set is not None:
+            return len(unit_set['ids'])
+        return self.units(job).count()
+
+    def get_unit(self, job: CodingJob, coder: User, index: int):
+        unit_set = self.get_unit_set(job, coder)
+       
+        if unit_set is not None:
+            if index < len(unit_set['ids']):
+                return Unit.get(Unit.external_id == unit_set['ids'][index])
         else:
-            units = Unit.select().where(Unit.codingjob == job.id)
-            return units[index]
+            units = self.units(job)
+            if index < units.count():  
+                return units[index]
+        
+        return None
+
+
+    def get_unit_set(self, job: CodingJob, coder: User, create_if_new: bool=True):
+        """
+        A user can be assigned to a specific set in a job. 
+        """
+        if not 'unit_sets' in self.rules:
+            return None
+    
+        jobuser = JobUser.get_or_none(JobUser.job == job, JobUser.user == coder)
+        if jobuser is not None: 
+            if jobuser.unit_set_index is not None:
+                return self.rules['unit_sets'][jobuser.unit_set_index]
+        
+        current_users = JobUser.select().where(JobUser.job == job).count()
+        n_sets = len(self.rules['unit_sets'])
+        next_set_index = current_users % n_sets
+        set = self.rules['unit_sets'][next_set_index]
+
+        if create_if_new: 
+            if jobuser is None:
+                JobUser.create(user=coder, job=job, unit_set=set['name'], unit_set_index=next_set_index)
+            else:
+                jobuser.unit_set = set['name']
+                jobuser.unit_set_index = next_set_index
+                jobuser.save()
+        return set    
+
+    
+
 
 
 class CrowdCoding(RuleSet):
@@ -129,7 +179,7 @@ class CrowdCoding(RuleSet):
     Prioritizes coding the entire set as fast as possible using multiple coders.
     """
     def get_next_unit(self, job: CodingJob, coder: User) -> Tuple[Optional[Unit], int]:
-        unit_index = self.n_coded(job, coder)
+        unit_index = self.coded(job, coder).count()
         if unit_index >= self.n_total(job, coder):
             return None, unit_index
 
@@ -183,6 +233,15 @@ class CrowdCoding(RuleSet):
                 return None
         return Unit.get_by_id(coded[index][1])
 
+    def n_total(self, job: CodingJob, coder: User):
+        """
+        For CrowdCoding, the number of units can be limited with the units_per_coder setting
+        """
+        n_units = self.units(job).count()
+        if 'units_per_coder' in self.rules: 
+            return min(self.rules['units_per_coder'], n_units)
+        return n_units
+
 
 def get_ruleset(rules: dict) -> RuleSet:
     ruleset_class = {
@@ -205,3 +264,4 @@ def seek_unit(job: CodingJob, coder: User, index: int) -> Optional[Unit]:
 def get_progress_report(job: CodingJob, coder: User) -> dict:
     """Return a progress report dictionary"""
     return get_ruleset(job.rules).get_progress(job, coder)
+

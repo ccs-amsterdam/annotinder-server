@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import amcat4annotator
-from amcat4annotator import auth
+from amcat4annotator import auth, api
 from amcat4annotator.db import User, create_codingjob, CodingJob
 
 
@@ -14,7 +14,7 @@ RULES = {"ruleset": "crowdcoding"}
 
 @pytest.fixture()
 def client():
-    return TestClient(amcat4annotator.app)
+    return TestClient(api.app)
 
 @pytest.fixture()
 def user():

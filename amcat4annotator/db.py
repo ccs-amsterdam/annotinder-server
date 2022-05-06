@@ -5,8 +5,8 @@ import datetime
 from enum import Enum
 from typing import List, Iterable, Optional, Any
 
-from peewee import DateTimeField, Model, CharField, IntegerField, SqliteDatabase, AutoField, TextField, ForeignKeyField, DoesNotExist, \
-    BooleanField, fn, JOIN
+from peewee import DateTimeField, Model, CharField, IntegerField, SqliteDatabase, AutoField, TextField, ForeignKeyField, \
+    BooleanField, JOIN
 
 STATUS = Enum('Status', ['NOT_STARTED', 'IN_PROGRESS', 'DONE', 'SKIPPED'])
 
@@ -48,22 +48,6 @@ class CodingJob(Model):
     class Meta:
         database = db
 
-
-def create_codingjob(title: str, codebook: dict, provenance: dict, rules: dict, creator: User, units: List[dict],
-                     authorization: Optional[dict]=None) -> int:
-    if authorization is None:
-        authorization = {}
-    restricted = authorization.get('restricted', False)
-    job = CodingJob.create(title=title, codebook=codebook, rules=rules, creator=creator, provenance=provenance, restricted=restricted)
-    Unit.insert_many(
-        [{'codingjob': job, 'external_id': u['id'], 'unit': u['unit'], 'gold': u.get('gold')} for u in units]
-    ).execute()
-    users = authorization.get('users', [])
-    if users:
-        set_jobusers(codingjob_id=job.id, emails=users)
-    return job
-
-
 class Unit(Model):
     id = AutoField()
     codingjob = ForeignKeyField(CodingJob, on_delete='CASCADE')
@@ -73,7 +57,7 @@ class Unit(Model):
 
     class Meta:
         database = db
-        indexes = ((('codingjob', 'external_id'), True),)
+        indexes = ((('codingjob', 'external_id'), True),)  # means that this combination should be unique
 
 
 class Annotation(Model):
@@ -86,29 +70,48 @@ class Annotation(Model):
 
     class Meta:
         database = db
-
+        indexes = ((('unit', 'coder'), True),)
 
 class JobUser(Model):
     user = ForeignKeyField(User, on_delete='CASCADE')
     job = ForeignKeyField(CodingJob, on_delete='CASCADE')
-    is_owner = BooleanField(default=False)
+    can_code = BooleanField(default=True)
+    can_edit = BooleanField(default=False)
+    unit_set = CharField(max_length=512, default=None, null=True)
+    unit_set_index = IntegerField(default=None, null=True)
 
     class Meta:
         database = db
         indexes = ((('user', 'job'), True),)
 
-def get_jobusers(codingjob_id: int) -> Iterable[str]:
-    jobusers = list(User.select(User.email).join(JobUser, JOIN.LEFT_OUTER).where(JobUser.job == codingjob_id))
-    return [u.email for u in jobusers]
 
-def set_jobusers(codingjob_id: int, emails: Iterable[str], only_add: bool = False) -> Iterable[str]:
+
+def create_codingjob(title: str, codebook: dict, provenance: dict, rules: dict, creator: User, units: List[dict],
+                     authorization: Optional[dict]=None) -> int:
+    if authorization is None:
+        authorization = {}
+    restricted = authorization.get('restricted', False)
+    job = CodingJob.create(title=title, codebook=codebook, rules=rules, creator=creator, provenance=provenance, restricted=restricted)
+    Unit.insert_many(
+        [{'codingjob': job, 'external_id': u['id'], 'unit': u['unit'], 'gold': u.get('gold')} for u in units]
+    ).execute()
+    users = authorization.get('users', [])
+    if users:
+        set_job_coders(codingjob_id=job.id, emails=users)
+    return job
+
+def get_job_coders(codingjob_id: int) -> Iterable[str]:
+    return list(User.select(User.email).join(JobUser, JOIN.LEFT_OUTER).where(JobUser.job == codingjob_id, JobUser.can_code == True))
+    
+def set_job_coders(codingjob_id: int, emails: Iterable[str], only_add: bool = False) -> Iterable[str]:
     """
     Sets the users that can code the codingjob (if the codingjob is restricted).
     If only_add is True, the provided list of emails is only added, and current users that are not in this list are kept.
     Returns an array with all users.
     """
     emails = set(emails)
-    existing_emails = set(get_jobusers(codingjob_id))
+    existing_jobusers = get_job_coders(codingjob_id)
+    existing_emails = set([ju.email for ju in existing_jobusers])
 
     for email in emails:
         if email in existing_emails:
@@ -116,7 +119,13 @@ def set_jobusers(codingjob_id: int, emails: Iterable[str], only_add: bool = Fals
         user = User.get_or_none(User.email == email)
         if not user:
             user = User.create(email=email)
-        JobUser.create(user=user, job_id=codingjob_id)
+
+        jobuser = JobUser.get_or_none(JobUser.user==user, JobUser.job==codingjob_id)
+        if jobuser is None:
+            JobUser.create(user=user, job_id=codingjob_id, can_code=True, can_edit=False)
+        else:
+            jobuser.can_code=True
+            jobuser.save()
 
     if only_add:
         emails = emails.union(existing_emails)
@@ -124,7 +133,10 @@ def set_jobusers(codingjob_id: int, emails: Iterable[str], only_add: bool = Fals
         rm_emails = existing_emails - emails
         for rm_email in rm_emails:
             user = User.get_or_none(User.email == rm_email)
-            JobUser.delete().where((JobUser.user==user) & (JobUser.job==codingjob_id)).execute()
+            jobuser = JobUser.get_or_none(JobUser.user==user, JobUser.job==codingjob_id)
+            if jobuser is not None:
+                jobuser.can_code=False
+                jobuser.save()
 
     return list(emails)
 
@@ -151,7 +163,6 @@ def get_jobs() -> list:
     data.sort(key=lambda x: x.get('created'), reverse=True)
     return data
 
-
 def get_user_jobs(user: User) -> list:
     """
     Retrieve all user jobs, including progress
@@ -160,30 +171,14 @@ def get_user_jobs(user: User) -> list:
         jobs = list(CodingJob.select().where(CodingJob.id == user.restricted_job))
     else:
         open_jobs = list(CodingJob.select().where(CodingJob.restricted == False))
-        restricted_jobs = list(CodingJob.select().join(JobUser, JOIN.LEFT_OUTER).where((CodingJob.restricted == True) & (JobUser.user == user.id)))
+        restricted_jobs = list(CodingJob.select().join(JobUser, JOIN.LEFT_OUTER).where(CodingJob.restricted == True, JobUser.user == user.id, JobUser.can_code == True ))
         jobs = open_jobs + restricted_jobs
-
-    jobs_with_progress = []
-    for job in jobs:
-        if job.archived: continue
-        data = {"id": job.id, "title": job.title, "created": job.created, "creator": job.creator.email}
-        
-        if 'units_per_coder' in job.rules:
-            data["n_total"] = job.rules['units_per_coder']
-        else:
-            data["n_total"] = Unit.select().where(Unit.codingjob == job.id).count()
-
-        annotations = Annotation.select().join(Unit).where(Unit.codingjob == job.id, Annotation.coder == user.id, Annotation.status != 'IN_PROGRESS')
-        data["n_coded"] = annotations.count()
-        data["modified"] = annotations.select(fn.MAX(Annotation.modified)).scalar() or 'NEW'
-        jobs_with_progress.append(data)
-
-    jobs_with_progress.sort(key=lambda x: x.get('created') if x.get('modified') == 'NEW' else x.get('modified'), reverse=True)
-    return jobs_with_progress
+    return jobs
 
 def set_annotation(unit_id: int, coder: str, annotation: dict, status: Optional[str] = None) -> Annotation:
     """Create a new annotation or replace an existing annotation"""
     c = User.get(User.email == coder)
+  
     if status:
         status = status.upper()
         assert hasattr(STATUS, status)

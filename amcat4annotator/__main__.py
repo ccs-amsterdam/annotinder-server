@@ -43,7 +43,7 @@ def check_token(args):
 
 
 def password(args):
-    u = User.get(User.email==args.user)
+    u = User.get(User.email == args.user)
     if args.setpassword:
         logging.info(f"Setting password for {args.user}")
         u.password = auth.hash_password(args.password)

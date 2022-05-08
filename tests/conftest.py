@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 
 import amcat4annotator
 from amcat4annotator import auth, api
-from amcat4annotator.db import User, create_codingjob, CodingJob
+from amcat4annotator.db import User, create_codingjob, add_jobsets, CodingJob
 
 
 UNITS = [{"id": 1, "unit": {"text": "unit1"}},
@@ -39,12 +39,13 @@ def password_user():
 
 @pytest.fixture()
 def job():
-    # TODO: no idea why create_codingjob yields an int - probably should standardize and refactor all db functions
-    #       into a separate module and use only model objects
-    u = User.create(email="batman@example.com", password="secret")
-    job = create_codingjob(title="test", codebook=CODEBOOK, provenance=PROVENANCE, units=UNITS, rules=RULES, creator=u).id
+    u = User.create(email="robin@example.com", password="secret", is_admin=True)
+    job = create_codingjob(title="test", codebook=CODEBOOK, jobsets=None, provenance=PROVENANCE, units=UNITS, rules=RULES, creator=u)
+
     yield job
     CodingJob.delete_by_id(job)
+    User.delete_by_id(u.id)
+
 
 
 @pytest.fixture()

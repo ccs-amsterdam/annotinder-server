@@ -24,24 +24,20 @@ async def authenticated_user(token: str = Depends(oauth2_scheme)) -> User:
         raise HTTPException(status_code=400, detail="Invalid token")
     return user
 
-def check_admin(user: User) -> None:
+
+def check_admin(user: User):
     if not user.is_admin:
         raise HTTPException(status_code=401, detail="Admin rights required")
 
-def check_job_owner(user: User, job: CodingJob):
-    if not JobUser.select().where((JobUser.user == user) & (JobUser.job == job) & (JobUser.is_owner == True)).exists():
-        raise HTTPException(status_code=401, detail="User not authorized to manage job")
 
 def check_job_user(user: User, job: CodingJob):
     if user.restricted_job is not None:
         if user.restricted_job != job.id: 
             raise HTTPException(status_code=401, detail="User not authorized to code job")
     else:      
-        if job.restricted and not JobUser.select().where(JobUser.user == user, JobUser.job == job, JobUser.can_code == True).exists():
+        if job.restricted and not JobUser.select().where(JobUser.user == user, JobUser.codingjob == job, JobUser.can_code == True).exists():
             raise HTTPException(status_code=401, detail="User not authorized to code job")
-
-
-
+    
 
 def verify_password(username, password):
     u = User.get_or_none(User.email == username)

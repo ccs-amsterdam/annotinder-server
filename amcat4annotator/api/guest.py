@@ -7,7 +7,8 @@ from amcat4annotator import auth
 from amcat4annotator.db import User
 from amcat4annotator.auth import verify_jobtoken
 
-app_annotator_guest = APIRouter(prefix ='/guest', tags=["annotator guest"])
+app_annotator_guest = APIRouter(prefix='/guest', tags=["annotator guest"])
+
 
 @app_annotator_guest.get("/jobtoken")
 def redeem_job_token(token: str = Query(None, description="A token for getting access to a specific coding job"),

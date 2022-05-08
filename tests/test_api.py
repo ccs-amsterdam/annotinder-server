@@ -3,7 +3,7 @@ from base64 import b64encode
 import json
 
 from amcat4annotator import auth
-from amcat4annotator.db import CodingJob, get_units, set_annotation, Annotation
+from amcat4annotator.db import CodingJob, get_units, get_jobset, get_jobset_units, set_annotation, Annotation
 from tests.conftest import get_json, post_json, UNITS, CODEBOOK, RULES
 
 
@@ -34,7 +34,7 @@ def test_post_job(client, admin_user):
 
 
 def test_get_job(client, admin_user, job):
-    j = get_json(client, f'annotator/codingjob/{job}', user=admin_user)
+    j = get_json(client, f'annotator/codingjob/{job.id}', user=admin_user)
     assert j['rules'] == RULES
     assert len(j['units']) == 2
     assert {x['unit']['text'] for x in j['units']} == {x['unit']['text'] for x in UNITS}
@@ -46,34 +46,36 @@ def test_job_admin_required(client, user):
 
 
 def test_get_codebook(client, user, job):
-    cb = get_json(client, f'annotator/codingjob/{job}/codebook', user=user)
+    cb = get_json(client, f'annotator/codingjob/{job.id}/codebook', user=user)
     assert cb == CODEBOOK
 
 
 def test_get_next_unit(client, user, job):
-    unit = get_json(client, f'annotator/codingjob/{job}/unit', user=user)
+    unit = get_json(client, f'annotator/codingjob/{job.id}/unit', user=user)
     assert unit['unit']['text'] in {"unit1", "unit2"}
 
 
 def test_seek_unit(client, user, job):
-    units = list(get_units(job))
-    set_annotation(units[1].id, user.email, {"answer": 42})
-    set_annotation(units[0].id, user.email, {})
-    unit = get_json(client, f'annotator/codingjob/{job}/unit', user=user, params=dict(index=0))
+    jobset = get_jobset(job.id, user.id, True)
+    units = get_jobset_units(jobset)
+    set_annotation(units[1], user, {"answer": 42})
+    set_annotation(units[0], user, {})
+    unit = get_json(client, f'annotator/codingjob/{job.id}/unit', user=user, params=dict(index=0))
     assert unit['id'] == units[1].id
     assert unit.get('annotation') == {"answer": 42}
 
 
 def test_set_annotation(client, user, job):
-    units = list(get_units(job))
-    unit = units[0].id
-    post_json(client, f'annotator/codingjob/{job}/unit/{unit}/annotation', user=user, expected=204, 
+    jobset = get_jobset(job.id, user.id, True)
+    units = get_jobset_units(jobset)
+    unit = units[0]
+    post_json(client, f'annotator/codingjob/{job.id}/unit/{unit.id}/annotation', user=user, expected=204, 
               json={"annotation": [{"foo": "bar"}]})
     a = list(Annotation.select().where(Annotation.coder==user.id, Annotation.unit==units[0].id))
     assert len(a) == 1
     assert a[0].annotation == [{"foo": "bar"}]
     assert a[0].status == "DONE"
-    post_json(client, f'annotator/codingjob/{job}/unit/{unit}/annotation', user=user, expected=204, 
+    post_json(client, f'annotator/codingjob/{job.id}/unit/{unit.id}/annotation', user=user, expected=204, 
               json={"status": "IN_PROGRESS", "annotation": [{"foo": "baz"}]})
     a = list(Annotation.select().where(Annotation.coder == user.id, Annotation.unit == units[0].id))
     assert len(a) == 1
@@ -82,12 +84,13 @@ def test_set_annotation(client, user, job):
 
 
 def test_progress(client, user, job):
-    p = get_json(client,  f'annotator/codingjob/{job}/progress', user=user)
+    p = get_json(client,  f'annotator/codingjob/{job.id}/progress', user=user)
     assert p['n_total'] == 2
     assert p['n_coded'] == 0
-    units = list(get_units(job))
-    set_annotation(units[0].id, user.email, {})
-    p = get_json(client,  f'annotator/codingjob/{job}/progress', user=user)
+    jobset = get_jobset(job.id, user.id, True)
+    units = get_jobset_units(jobset)
+    set_annotation(units[0], user, {})
+    p = get_json(client,  f'annotator/codingjob/{job.id}/progress', user=user)
     assert p['n_coded'] == 1
 
 

@@ -1,13 +1,13 @@
 import pytest
 
-from amcat4annotator.db import create_codingjob, get_units, CodingJob, User, set_annotation, Annotation
+from amcat4annotator.db import get_units, CodingJob, User, set_annotation, Annotation, get_jobset, get_jobset_units
 
 from tests.conftest import UNITS
 
 
 def test_codingjob(job: int):
     job2 = CodingJob.get_by_id(job)
-    assert job2.codebook['foo'] == 'bar'
+    assert job2.jobsets[0].codebook['foo'] == 'bar'
 
 
 def test_get_units(job: int):
@@ -17,11 +17,13 @@ def test_get_units(job: int):
 
 
 def test_annotate(job: int, user: User):
-    unit = get_units(job)[0]
-    a = set_annotation(unit.id, user.email, {"foo": "bar"})
+    jobset = get_jobset(job.id, user.id, True)
+    units = get_jobset_units(jobset)
+    unit = units[0]
+    a = set_annotation(unit, user, {"foo": "bar"})
     assert Annotation.get_by_id(a.id).annotation['foo'] == 'bar'
     assert Annotation.get_by_id(a.id).status == "DONE"
-    a2 = set_annotation(unit.id, user.email, {"foo": "baz"}, status="IN_PROGRESS")
+    a2 = set_annotation(unit, user, {"foo": "baz"}, status="IN_PROGRESS")
     assert a.id == a2.id
     assert Annotation.get_by_id(a.id).annotation['foo'] == 'baz'
     assert Annotation.get_by_id(a.id).status == "IN_PROGRESS"

@@ -1,6 +1,6 @@
 import pytest
 
-from amcat4annotator.db import User, set_annotation, CodingJob, get_units
+from amcat4annotator.db import User, set_annotation, CodingJob, get_units, get_jobset, get_jobset_units
 from amcat4annotator.rules import get_next_unit, get_ruleset, get_progress_report, seek_unit
 
 
@@ -8,26 +8,29 @@ def test_crowdcoding_next(job: int, user: User):
     """
     Do we get the next uncoded unit for a crowd coder?
     """
-    job = CodingJob.get_by_id(job)
+    job = CodingJob.get_by_id(job.id)
     u, index = get_next_unit(job, user)
     assert u.unit['text'] in {"unit1", "unit2"}
-    set_annotation(u.id, user.email, {})
+    set_annotation(u, user, {})
     u2, index = get_next_unit(job, user)
     assert {u.unit['text'], u2.unit['text']} == {"unit1", "unit2"}
-    set_annotation(u2.id, user.email, {})
+    set_annotation(u2, user, {})
     u3, index = get_next_unit(job, user)
     assert u3 is None
 
 
 def test_crowdcoding_next_leastcoded(job: int, user: User, admin_user: User, password_user: User):
     """Does crowdcoding favour units with fewer anotations?"""
-    job = CodingJob.get_by_id(job)
-    units = list(get_units(job.id))
-    set_annotation(units[0].id, admin_user.email, {})
+    jobset = get_jobset(job.id, admin_user, True)
+    units = get_jobset_units(jobset)
+    set_annotation(units[0], admin_user, {})
     u, index = get_next_unit(job, user)
     assert u == units[1]
-    set_annotation(units[0].id, password_user.email, {})
-    set_annotation(units[1].id, password_user.email, {})
+
+    jobset = get_jobset(job.id, password_user, True)
+    units = get_jobset_units(jobset)
+    set_annotation(units[0], password_user, {})
+    set_annotation(units[1], password_user, {})
     u, index = get_next_unit(job, user)
     assert u == units[1]
 
@@ -37,8 +40,10 @@ def test_progress(job: int, user: User):
     p = get_progress_report(job, user)
     assert p['n_total'] == 2
     assert p['n_coded'] == 0
-    units = list(get_units(job.id))
-    set_annotation(units[0].id, user.email, {})
+
+    jobset = get_jobset(job.id, user, True)
+    units = get_jobset_units(jobset)
+    set_annotation(units[0], user, {})
     p = get_progress_report(job, user)
     assert p['n_total'] == 2
     assert p['n_coded'] == 1
@@ -46,9 +51,9 @@ def test_progress(job: int, user: User):
 
 def test_seek_backwards(job: int, user: User):
     """Can we retrieve the first coded unit?"""
-    job = CodingJob.get_by_id(job)
-    units = list(get_units(job.id))
+    jobset = get_jobset(job.id, user, True)
+    units = get_jobset_units(jobset)
     assert seek_unit(job, user, index=0) == None
-    set_annotation(units[1].id, user.email, {})
-    set_annotation(units[0].id, user.email, {})
+    set_annotation(units[1], user, {})
+    set_annotation(units[0], user, {})
     assert seek_unit(job, user, index=0).id == units[1].id

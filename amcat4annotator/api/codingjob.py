@@ -1,20 +1,23 @@
 from typing import Optional
+import logging
 
 from fastapi import APIRouter, HTTPException, Response
 from fastapi.params import Query, Body, Depends
 
-from amcat4annotator.api.common import _job
+from amcat4annotator.api.common import _job, _jobset
 from amcat4annotator import auth, rules
-from amcat4annotator.db import create_codingjob, Unit, Annotation, User, get_jobs, set_annotation, get_job_coders, set_job_coders
+from amcat4annotator.db import db, Unit, Annotation, User, create_codingjob,  get_jobs, set_annotation, get_job_coders, set_job_coders
 from amcat4annotator.auth import check_admin, check_job_user, get_jobtoken
 
 app_annotator_codingjob = APIRouter(prefix='/codingjob', tags=["annotator codingjob"])
+
 
 @app_annotator_codingjob.post("", status_code=201)
 def create_job(title: str = Body(None, description='The title of the codingjob'),
                codebook: dict = Body(None, description='The codebook'),
                units: list = Body(None, description='The units'),
                rules: dict = Body(None, description='The rules'),
+               jobsets: list = Body(None, description='A list of codingjob jobsets. An array of objects, with keys: name, codebook, unit_set'),
                authorization: dict = Body(None, description='A dictionnary containing authorization settings'),
                provenance: dict = Body(None, description='A dictionary containing any information about the units'),
                user: User = Depends(auth.authenticated_user)):
@@ -53,33 +56,42 @@ def create_job(title: str = Body(None, description='The title of the codingjob')
     """
     check_admin(user)
     if not title or not codebook or not units or not rules:
-        return HTTPException(status_code=400, detail='Codingjob is missing keys')
-    job = create_codingjob(title=title, codebook=codebook, provenance=provenance,
-                           rules=rules, creator=user, units=units, authorization=authorization)
+        raise HTTPException(status_code=400, detail='Codingjob is missing keys')
+
+    with db.atomic() as transaction:
+        try:
+            job = create_codingjob(title=title, codebook=codebook, jobsets=jobsets, provenance=provenance, rules=rules, creator=user, units=units, authorization=authorization)
+        except Exception as e:
+            transaction.rollback()
+            logging.error(e)
+            raise HTTPException(status_code=400, detail='Could not create codingjob')
+
     return dict(id=job.id)
 
 
 @app_annotator_codingjob.post("/{job_id}/settings", status_code=201)
-def set_job_settings(job_id: int, 
+def set_job_settings(job_id: int,
                      user: User = Depends(auth.authenticated_user),
-                     restricted: Optional[bool] = Body(None, description = "set whether job should be restricted to authorized users"),
-                     archived: Optional[bool] = Body(None, description = "set whether job should be archived")):
+                     restricted: Optional[bool] = Body(None, description="set whether job should be restricted to authorized users"),
+                     archived: Optional[bool] = Body(None, description="set whether job should be archived")):
     """
-    Set job settings, and receive an object with all job settings. 
+    Set job settings, and receive an object with all job settings.
     Payload should be an object where every settings is a key. Only the
-    settings that need to be changed have to be in the object. The 
+    settings that need to be changed have to be in the object. The
     returned object will always have all settings.
     """
     check_admin(user)
     job = _job(job_id)
-    if restricted is not None: job.restricted = restricted
-    if archived is not None: job.archived = archived
+    if restricted is not None:
+        job.restricted = restricted
+    if archived is not None:
+        job.archived = archived
     job.save()
     return dict(restricted=job.restricted, archived=job.archived)
 
 
 @app_annotator_codingjob.post("/{job_id}/users", status_code=204)
-def set_job_users(job_id: int, 
+def set_job_users(job_id: int,
                   user: User = Depends(auth.authenticated_user),
                   users: list = Body(None, description="An array of user emails"),
                   only_add: bool = Body(None, description="If True, only add the provided list of users, without removing existing users")):
@@ -94,7 +106,7 @@ def set_job_users(job_id: int,
 
 
 @app_annotator_codingjob.get("/{job_id}")
-def get_job(job_id: int, 
+def get_job(job_id: int,
             annotations: bool = Query(None, description="Boolean for whether or not to include annotations"),
             user: User = Depends(auth.authenticated_user)):
     """
@@ -103,18 +115,18 @@ def get_job(job_id: int,
     check_admin(user)
     job = _job(job_id)
     units = list(Unit.select(Unit.id, Unit.gold, Unit.unit)
-                     .where(Unit.codingjob==job).tuples().dicts().execute())
+                     .where(Unit.codingjob == job).tuples().dicts().execute())
     cj = {
         "id": job_id,
         "title": job.title,
-        "codebook": job.codebook,
+        "jobsets": [js for js in job.jobsets],
         "provenance": job.provenance,
         "rules": job.rules,
         "units": units
     }
     if annotations:
         cj['annotations'] = list(Annotation.select(Annotation).join(Unit)
-                 .where(Unit.codingjob == job).tuples().dicts().execute())
+                                 .where(Unit.codingjob == job).tuples().dicts().execute())
     return cj
 
 
@@ -127,11 +139,17 @@ def get_job_details(job_id: int, user: User = Depends(auth.authenticated_user)):
     job = _job(job_id)
     n_total = Unit.select().where(Unit.codingjob == job.id).count()
     coders = get_job_coders(job.id)
-    
+
+    js_details = []
+    for js in job.jobsets:
+        name = js.jobset
+        n_units = js.unitset.count() if js.has_unit_set else n_total
+        js_details.append({"name": name, "n_units": n_units})
+
     data = {
         "id": job_id,
         "title": job.title,
-        "codebook": job.codebook,
+        "jobset_details": js_details,
         "rules": job.rules,
         "restricted": job.restricted,
         "created": job.created,
@@ -139,7 +157,7 @@ def get_job_details(job_id: int, user: User = Depends(auth.authenticated_user)):
         "n_total": n_total,
         "users": [coder.email for coder in coders]
     }
- 
+
     return data
 
 
@@ -150,9 +168,10 @@ def get_job_annotations(job_id: int, user: User = Depends(auth.authenticated_use
     """
     check_admin(user)
     job = _job(job_id)
-    units = list(Annotation.select(Unit, Annotation, User.email).join(Unit).where(Unit.codingjob==job).join(User, on=(Annotation.coder == User.id)).tuples().dicts().execute())
+    units = list(Annotation.select(Unit, Annotation, User.email).join(Unit).where(Unit.codingjob == job).join(User, on=(Annotation.coder == User.id)).tuples().dicts().execute())
     data = [{"unit_id": u["external_id"], "coder": u["email"], "annotation": u["annotation"], "status": u["status"]} for u in units]
     return data
+
 
 @app_annotator_codingjob.get("/{job_id}/token")
 def get_job_token(job_id: int, user: User = Depends(auth.authenticated_user)):
@@ -168,20 +187,27 @@ def get_job_token(job_id: int, user: User = Depends(auth.authenticated_user)):
 
 @app_annotator_codingjob.get("/{job_id}/codebook")
 def get_codebook(job_id: int, user: User = Depends(auth.authenticated_user)):
+    """
+    Get the codebook for a specific job
+    """
     job = _job(job_id)
     check_job_user(user, job)
-    return job.codebook
+    jobset = _jobset(job_id, user.id, assign_set=True)
+    return jobset.codebook
 
 
 @app_annotator_codingjob.get("/{job_id}/progress")
 def progress(job_id, user: User = Depends(auth.authenticated_user)):
+    """
+    Get a user's progress on a specific job.
+    """
     job = _job(job_id)
     check_job_user(user, job)
     return rules.get_progress_report(job, user)
 
 
 @app_annotator_codingjob.get("/{job_id}/unit")
-def get_unit(job_id, 
+def get_unit(job_id,
              index: int = Query(None, description="The index of unit set for a particular user"),
              user: User = Depends(auth.authenticated_user)):
     """
@@ -190,14 +216,13 @@ def get_unit(job_id,
     """
     job = _job(job_id)
     check_job_user(user, job)
-    
     if index is not None:
         index = int(index)
         u = rules.seek_unit(job, user, index=index)
     else:
         u, index = rules.get_next_unit(job, user)
     if u is None:
-        return HTTPException(status_code=404)
+        raise HTTPException(status_code=404)
 
     result = {'id': u.id, 'unit': u.unit, 'index': index}
     a = list(Annotation.select().where(Annotation.unit == u.id, Annotation.coder == user.id))
@@ -208,8 +233,8 @@ def get_unit(job_id,
 
 
 @app_annotator_codingjob.post("/{job_id}/unit/{unit_id}/annotation", status_code=204)
-def post_annotation(job_id: int, 
-                    unit_id: int, 
+def post_annotation(job_id: int,
+                    unit_id: int,
                     user: User = Depends(auth.authenticated_user),
                     annotation: list = Body(None, description="An array of dictionary annotations"),
                     status: str = Body(None, description='The status of the annotation')):
@@ -221,7 +246,6 @@ def post_annotation(job_id: int,
       "status": "DONE"|"IN_PROGRESS"|"SKIPPED"  # optional
     }
     """
-    
     unit = Unit.get_or_none(Unit.id == unit_id)
     job = _job(job_id)
     check_job_user(user, job)
@@ -231,9 +255,10 @@ def post_annotation(job_id: int,
         HTTPException(status_code=400)
     if not annotation:
         HTTPException(status_code=400)
-    a = set_annotation(unit_id = unit.id, coder=user.email, annotation=annotation, status=status)
+    set_annotation(unit=unit, coder=user, annotation=annotation, status=status)
     return Response(status_code=204)
-    
+
+
 @app_annotator_codingjob.get("")
 def get_all_jobs(user: User = Depends(auth.authenticated_user)):
     """
@@ -242,8 +267,6 @@ def get_all_jobs(user: User = Depends(auth.authenticated_user)):
     check_admin(user)
     jobs = get_jobs()
     return {"jobs": jobs}
-
-
 
 # TODO
 # - redeem_jobtoken moet user kunnen creeren vor een 'job token' (en email/id teruggeven) [untested]

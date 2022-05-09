@@ -26,16 +26,7 @@ def create_job(title: str = Body(None, description='The title of the codingjob')
 
      {
       "title": <string>,
-      "codebook": {.. blob ..},
-      "authorization": {  # optional, default: {'restricted': False}
-        restricted: boolean,
-        users: [emails]
-      }
-      "rules": {
-        "ruleset": <string>,
-        "authorization": "open"|"restricted",  # optional, default: open
-        .. additional ruleset parameters ..
-      },
+      "codebook": {.. blob ..}, # required, but can be omitted if specified in every jobset
       "units": [
         {"id": <string>         # An id string. Needs to be unique within a codingjob (not necessarily across codingjobs)
          "unit": {.. blob ..},
@@ -43,6 +34,21 @@ def create_job(title: str = Body(None, description='The title of the codingjob')
         }
         ..
       ],
+      "rules": {
+        "ruleset": <string>,
+        "authorization": "open"|"restricted",  # optional, default: open
+        .. additional ruleset parameters ..
+      },
+      "jobsets": [        # optional
+        {"name": <string>,
+         "codebook": <codebook>,  ## optional
+         "unit_set": [<external_id>] ## optional
+         }
+      ]
+      "authorization": {  # optional, default: {'restricted': False}
+        restricted: boolean,
+        users: [emails]
+      },
       "provenance": {.. blob ..},  # optional
      }
 

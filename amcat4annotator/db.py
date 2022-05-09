@@ -101,7 +101,7 @@ class JobSet(Model):
 
 class UnitSet(Model):
     jobset = ForeignKeyField(JobSet, on_delete="CASCADE", backref='unitset')
-    unit = ForeignKeyField(Unit, on_delete="CASCADE")
+    unit = ForeignKeyField(Unit, on_delete="CASCADE", backref='unitset')
 
     class Meta:
         database = db
@@ -156,7 +156,7 @@ def create_codingjob(title: str, codebook: dict, jobsets: list, provenance: dict
 
 def add_jobsets(job: CodingJob, jobsets: list, codebook: dict) -> None:
     if jobsets is None: 
-        jobsets = [{"name": ""}]
+        jobsets = [{"name": "All"}]
     for jobset in jobsets:
         if 'name' not in jobset:
             raise HTTPException(status_code=400, detail='Every jobset item must have a name')
@@ -171,11 +171,12 @@ def add_jobsets(job: CodingJob, jobsets: list, codebook: dict) -> None:
         has_unit_set = 'unit_set' in jobset and jobset['unit_set'] is not None
         jobset_id = JobSet.create(codingjob=job, jobset=jobset['name'], codebook=jobset['codebook'], has_unit_set=has_unit_set)
         if has_unit_set:
-            # if the jobset has a unit_set, create a jobset -> units relation
-            # If it doesn't, the JobSet should use all units for this codingjob
             unit_set = [{"jobset": jobset_id, "unit": Unit.select(Unit.id).where(Unit.codingjob == job, Unit.external_id == ext_id)} for ext_id in jobset['unit_set']]
-            for batch in chunked(unit_set, 100):
-                UnitSet.insert_many(batch).execute()
+        else:
+            unit_set = [{"jobset": jobset_id, "unit": u} for u in Unit.select(Unit.id).where(Unit.codingjob == job)]
+        for batch in chunked(unit_set, 100):
+            UnitSet.insert_many(batch).execute()
+        
 
 
 def get_job_coders(codingjob_id: int) -> Iterable[str]:
@@ -308,11 +309,7 @@ def get_jobset_units(jobset: JobSet):
     Returns a peewee query that selects the units assigned to a jobset,
     or all units if the jobset does not have a specific unit_set
     """
-    if not jobset.has_unit_set:
-        units = Unit.select().where(Unit.codingjob==jobset.codingjob)
-    else:
-        units = Unit.select().join(UnitSet).where(UnitSet.jobset == jobset).switch(Unit)
-    return units
-
+    return Unit.select().join(UnitSet).where(UnitSet.jobset == jobset).switch(Unit)
+    
 #TODO: is it good practice to always call this on import?
 db.create_tables([CodingJob, JobSet, Unit, Annotation, User, JobUser, UnitSet])

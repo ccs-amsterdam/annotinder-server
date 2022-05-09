@@ -196,7 +196,7 @@ class CrowdCoding(RuleSet):
         # (3) select a unit that is uncoded by me, and least coded by anyone else
         coded = {t[0] for t in Annotation.select(Unit.id).join(Unit).
             where(Unit.codingjob == job.id,
-                   Annotation.coder == coder.id).tuples()}
+                  Annotation.coder == coder.id).tuples()}
         least_coded = list(
             units
             .join(Annotation)

@@ -25,6 +25,8 @@ setup(
     ],
     extras_require={
         'dev': [
+            'uvicorn[standard]',
+            'gunicorn',
             'pytest',
             'codecov',
         ]

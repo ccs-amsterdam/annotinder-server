@@ -29,6 +29,7 @@ setup(
             'gunicorn',
             'pytest',
             'codecov',
+            'python-multipart'
         ]
     },
 )

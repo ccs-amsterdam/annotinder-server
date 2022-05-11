@@ -135,7 +135,7 @@ class Annotation(Model):
 
 
 def create_codingjob(title: str, codebook: dict, jobsets: list, provenance: dict, rules: dict, creator: User, units: List[dict],
-                     debriefing: Optional[dict], authorization: Optional[dict] = None) -> int:
+                     debriefing: Optional[dict] = None, authorization: Optional[dict] = None) -> int:
 
     if authorization is None:
         authorization = {}

@@ -1,5 +1,6 @@
 from typing import Optional
 import logging
+import re
 
 from fastapi import APIRouter, HTTPException, Response
 from fastapi.params import Query, Body, Depends
@@ -17,6 +18,7 @@ def create_job(title: str = Body(None, description='The title of the codingjob')
                codebook: dict = Body(None, description='The codebook'),
                units: list = Body(None, description='The units'),
                rules: dict = Body(None, description='The rules'),
+               debriefing: dict = Body(None, description='Debriefing information'),
                jobsets: list = Body(None, description='A list of codingjob jobsets. An array of objects, with keys: name, codebook, unit_set'),
                authorization: dict = Body(None, description='A dictionnary containing authorization settings'),
                provenance: dict = Body(None, description='A dictionary containing any information about the units'),
@@ -39,6 +41,10 @@ def create_job(title: str = Body(None, description='The title of the codingjob')
         "authorization": "open"|"restricted",  # optional, default: open
         .. additional ruleset parameters ..
       },
+      "debriefing": {
+        "message": <string>,
+        "link": <string> (url)
+      }
       "jobsets": [        # optional
         {"name": <string>,
          "codebook": <codebook>,  ## optional
@@ -66,7 +72,7 @@ def create_job(title: str = Body(None, description='The title of the codingjob')
 
     with db.atomic() as transaction:
         try:
-            job = create_codingjob(title=title, codebook=codebook, jobsets=jobsets, provenance=provenance, rules=rules, creator=user, units=units, authorization=authorization)
+            job = create_codingjob(title=title, codebook=codebook, jobsets=jobsets, provenance=provenance, rules=rules, debriefing=debriefing, creator=user, units=units, authorization=authorization)
         except Exception as e:
             transaction.rollback()
             logging.error(e)
@@ -256,11 +262,11 @@ def post_annotation(job_id: int,
     job = _job(job_id)
     check_job_user(user, job)
     if not unit:
-        HTTPException(status_code=404)
+        raise HTTPException(status_code=404)
     if unit.codingjob != job:
-        HTTPException(status_code=400)
+        raise HTTPException(status_code=400)
     if not annotation:
-        HTTPException(status_code=400)
+        raise HTTPException(status_code=400)
     set_annotation(unit=unit, coder=user, annotation=annotation, status=status)
     return Response(status_code=204)
 
@@ -273,6 +279,23 @@ def get_all_jobs(user: User = Depends(auth.authenticated_user)):
     check_admin(user)
     jobs = get_jobs()
     return {"jobs": jobs}
+
+@app_annotator_codingjob.get("/{job_id}/debriefing")
+def get_debriefing(job_id: int,
+                   user: User = Depends(auth.authenticated_user)):
+    """
+    Get a list of all codingjobs
+    """
+    job = _job(job_id)
+    check_job_user(user, job)
+    progress = rules.get_progress_report(job, user)
+    print(progress)
+    if progress['n_coded'] != progress['n_total']:
+      raise HTTPException(status_code=404, detail='Can only get debrief information once job is completed')
+    
+    job.debriefing['user_id'] = re.sub('jobuser_[0-9]+_', '', user.email)
+    return job.debriefing
+
 
 # TODO
 # - redeem_jobtoken moet user kunnen creeren vor een 'job token' (en email/id teruggeven) [untested]

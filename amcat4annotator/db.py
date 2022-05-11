@@ -66,6 +66,7 @@ class CodingJob(Model):
     title = CharField()
     provenance = JSONField()
     rules = JSONField()
+    debriefing = JSONField(default=None, null=True)
     creator = ForeignKeyField(User, on_delete='CASCADE')
     restricted = BooleanField(default=False)
     created = DateTimeField(default=datetime.datetime.now())
@@ -125,7 +126,7 @@ class Annotation(Model):
     coder = ForeignKeyField(User, on_delete='CASCADE')
     jobset = CharField(max_length=512, null=True) 
     status = CharField(max_length=64, default=STATUS.DONE.name)
-    modified = DateTimeField(default=datetime.datetime.now())
+    modified = DateTimeField(default=datetime.datetime.now)
     annotation = JSONField()
 
     class Meta:
@@ -134,12 +135,12 @@ class Annotation(Model):
 
 
 def create_codingjob(title: str, codebook: dict, jobsets: list, provenance: dict, rules: dict, creator: User, units: List[dict],
-                     authorization: Optional[dict] = None) -> int:
+                     debriefing: Optional[dict], authorization: Optional[dict] = None) -> int:
 
     if authorization is None:
         authorization = {}
     restricted = authorization.get('restricted', False)
-    job = CodingJob.create(title=title, rules=rules, creator=creator, provenance=provenance, restricted=restricted)
+    job = CodingJob.create(title=title, rules=rules, debriefing=debriefing, creator=creator, provenance=provenance, restricted=restricted)
 
     units = [{'codingjob': job, 'external_id': u['id'], 'unit': u['unit'], 'gold': u.get('gold')} for u in units]
     for batch in chunked(units, 100):

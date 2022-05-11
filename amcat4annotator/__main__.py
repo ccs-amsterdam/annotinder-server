@@ -14,9 +14,8 @@ from amcat4annotator.api import app
 
 def run(args):
     logging.info(f"Starting server at port {args.port}, reload={not args.noreload}")
-    #uvicorn.run("amcat4annotator.api:app", host="0.0.0.0", port=args.port, reload=not args.noreload)
-    app.run()
-
+    uvicorn.run("amcat4annotator.api:app", host="0.0.0.0", port=args.port, reload=not args.noreload)
+    
 def _print_user(u: User):
     print(json.dumps(dict(id=u.id, email=u.email, is_admin=u.is_admin, password=bool(u.password))))
 

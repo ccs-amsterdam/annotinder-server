@@ -293,6 +293,9 @@ def get_debriefing(job_id: int,
     if progress['n_coded'] != progress['n_total']:
       raise HTTPException(status_code=404, detail='Can only get debrief information once job is completed')
     
+    if job.debriefing is None:
+      return None
+      
     job.debriefing['user_id'] = re.sub('jobuser_[0-9]+_', '', user.email)
     return job.debriefing
 

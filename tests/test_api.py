@@ -3,7 +3,9 @@ from base64 import b64encode
 import json
 
 from amcat4annotator import auth
-from amcat4annotator.db import CodingJob, get_units, get_jobset, get_jobset_units, set_annotation, Annotation
+from amcat4annotator.models import CodingJob, Annotation
+from amcat4annotator.crud import crud_codingjob, crud_user
+
 from tests.conftest import get_json, post_json, UNITS, CODEBOOK, RULES
 
 

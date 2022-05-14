@@ -1,6 +1,6 @@
 import pytest
 
-from amcat4annotator.db import User, set_annotation, CodingJob, get_units, get_jobset, get_jobset_units
+from amcat4annotator.models import User, CodingJob
 from amcat4annotator.rules import get_next_unit, get_ruleset, get_progress_report, seek_unit
 
 

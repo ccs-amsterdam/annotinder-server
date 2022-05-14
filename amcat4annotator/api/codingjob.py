@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from amcat4annotator.crud import crud_codingjob
 from amcat4annotator.database import engine, get_db
-from amcat4annotator.authentication import auth_user, check_admin, get_jobtoken, check_job_user
+from amcat4annotator.auth import auth_user, check_admin, get_jobtoken, check_job_user
 from amcat4annotator.models import Unit, User, JobSetUnits
 
 app_annotator_codingjob = APIRouter(prefix='/codingjob', tags=["annotator codingjob"])

@@ -13,7 +13,7 @@ from amcat4annotator.api import app
 from amcat4annotator.crud import crud_user
 from amcat4annotator.models import User
 from amcat4annotator.database import SessionLocal
-from amcat4annotator.authentication import get_token, verify_token, hash_password, verify_password
+from amcat4annotator.auth import get_token, verify_token, hash_password, verify_password
 
 def run(args):
     logging.info(f"Starting server at port {args.port}, reload={not args.noreload}")

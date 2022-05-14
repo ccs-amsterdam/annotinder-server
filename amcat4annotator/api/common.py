@@ -5,6 +5,7 @@ from amcat4annotator.crud import crud_codingjob
 from sqlalchemy.orm import Session
 
 
+
 def _job(db: Session, job_id: int) -> CodingJob:
     job = db.query(CodingJob).filter(CodingJob.id == job_id).first()
     if not job:

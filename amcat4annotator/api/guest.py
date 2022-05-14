@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from amcat4annotator.crud import crud_user
 from amcat4annotator.database import engine, get_db
-from amcat4annotator.authentication import verify_jobtoken, get_token
+from amcat4annotator.auth import verify_jobtoken, get_token
 
 
 app_annotator_guest = APIRouter(prefix='/guest', tags=["annotator guest"])

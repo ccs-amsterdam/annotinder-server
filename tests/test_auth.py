@@ -1,5 +1,5 @@
 from amcat4annotator import auth
-from amcat4annotator.db import User
+from amcat4annotator.models import User
 
 
 def test_token(user):

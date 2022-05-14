@@ -1,6 +1,6 @@
 import pytest
 
-from amcat4annotator.db import get_units, CodingJob, User, set_annotation, Annotation, get_jobset, get_jobset_units
+from amcat4annotator.models import CodingJob, User, Annotation
 
 from tests.conftest import UNITS
 

@@ -33,8 +33,6 @@ class User(Base):
     codingjobs = relationship("CodingJob", back_populates="creator")
 
 
-
-
 class CodingJob(Base):
     __tablename__ = 'codingjobs'
 
@@ -84,7 +82,6 @@ class JobSetUnits(Base):
     unit_id = Column(Integer, ForeignKey("units.id"), index=True)
   
     
-
 class JobUser(Base):
     __tablename__ = 'jobusers'
 
@@ -97,8 +94,6 @@ class JobUser(Base):
 
     ForeignKeyConstraint(['user_id','codingjob_id'],['users.id','codingjobs.id'])
     codingjob = relationship('CodingJob', back_populates="jobusers")
-
-   
 
 
 class Annotation(Base):

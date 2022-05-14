@@ -3,8 +3,8 @@ from fastapi.testclient import TestClient
 
 import amcat4annotator
 from amcat4annotator import auth, api
-from amcat4annotator.db import User, create_codingjob, add_jobsets, CodingJob
-
+from amcat4annotator.database import get_test_db
+from amcat4annotator.crud import crud_codingjob, crud_user
 
 UNITS = [{"id": 1, "unit": {"text": "unit1"}},
          {"id": 2, "unit": {"text": "unit2"}, "gold": {"element": "au"}}]
@@ -18,34 +18,50 @@ def client():
 
 @pytest.fixture()
 def user():
-    u = User.create(email="user@example.com")
-    yield u
-    User.delete_by_id(u.id)
+    with get_test_db() as db:
+        u = crud_user.create_user(username = "user@example.com")
+        db.commit()
+        db.refresh(u)
+        yield u
+        db.delete(u)
+        db.commit()
 
 
 @pytest.fixture()
 def admin_user():
-    u = User.create(email="admin@example.com", is_admin=True)
-    yield u
-    User.delete_by_id(u.id)
+    with get_test_db() as db:
+        u = crud_user.create_user(username = "admin@example.com", admin=True)
+        db.commit()
+        db.refresh(u)
+        yield u
+        db.delete(u)
+        db.commit()
 
 
 @pytest.fixture()
 def password_user():
-    u = User.create(email="batman@example.com", password="secret")
-    yield u
-    User.delete_by_id(u.id)
+    with get_test_db() as db:
+        u = crud_user.create_user(email="batman@example.com", password="secret")
+        db.commit()
+        db.refresh(u)
+        yield u
+        db.delete(u)
+        db.commit()
 
 
 @pytest.fixture()
 def job():
-    u = User.create(email="robin@example.com", password="secret", is_admin=True)
-    job = create_codingjob(title="test", codebook=CODEBOOK, jobsets=None, provenance=PROVENANCE, units=UNITS, rules=RULES, creator=u)
-
-    yield job
-    CodingJob.delete_by_id(job)
-    User.delete_by_id(u.id)
-
+    with get_test_db() as db:
+        u = crud_user.create_user(email="robin@example.com", password="secret", is_admin=True)
+        db.commit()
+        db.refresh(u)
+        job = crud_codingjob.create_codingjob(title="test", codebook=CODEBOOK, jobsets=None, provenance=PROVENANCE, units=UNITS, rules=RULES, creator=u)
+        db.commit()
+        db.refresh(job)
+        yield job
+        db.delete(u)
+        db.delete(job)
+        db.commit()
 
 
 @pytest.fixture()

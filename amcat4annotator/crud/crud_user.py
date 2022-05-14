@@ -5,7 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from amcat4annotator.models import User, CodingJob, Annotation, JobUser, Unit
-from amcat4annotator import authentication
+from amcat4annotator import auth
 from amcat4annotator import rules
 #from amcat4annotator import schemas
 
@@ -20,7 +20,7 @@ def verify_password(db: Session, username: str, password: str):
     elif not u.password:
         logging.warning(f"Password for {u} is missing")
         return None
-    elif not authentication.verify_password(password, u.password):
+    elif not auth.verify_password(password, u.password):
         logging.warning(f"Password for {u} did not match")
         return None
     else:
@@ -32,7 +32,7 @@ def create_user(db: Session, username: str, password: Optional[str] = None, admi
     if u:
         logging.error(f"User {username} already exists!")
         return None
-    hpassword = authentication.hash_password(password) if password else None
+    hpassword = auth.hash_password(password) if password else None
     db_user = User(email=username, is_admin=admin, password=hpassword, restricted_job=restricted_job)
     db.add(db_user)
     db.commit()

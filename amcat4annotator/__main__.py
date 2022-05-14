@@ -8,9 +8,12 @@ import logging
 
 import uvicorn
 
-from amcat4annotator import auth
-from amcat4annotator.db import User
 from amcat4annotator.api import app
+
+from amcat4annotator.crud import crud_user
+from amcat4annotator.models import User
+from amcat4annotator.database import SessionLocal
+from amcat4annotator.authentication import get_token, verify_token, hash_password, verify_password
 
 def run(args):
     logging.info(f"Starting server at port {args.port}, reload={not args.noreload}")
@@ -25,17 +28,14 @@ def get_token(args):
     if not u:
         logging.error(f"User {args.user} does not exist!")
         return
-    print(auth.get_token(u))
+    print(get_token(u))
 
 
 def add_user(args):
-    u = User.get_or_none(User.email == args.user)
+    db = SessionLocal()
+    u = crud_user.create_user(db, args.user, args.password, args.admin)
     if u:
-        logging.error(f"User {args.user} already exists!")
-        return
-    password = auth.hash_password(args.password) if args.password else None
-    u = User.create(email=args.user, is_admin=args.admin, password=password)
-    _print_user(u)
+        _print_user(u)
 
 
 def list_users(args):
@@ -44,7 +44,7 @@ def list_users(args):
 
 
 def check_token(args):
-    u = auth.verify_token(args.token)
+    u = verify_token(args.token)
     _print_user(u)
 
 
@@ -52,11 +52,11 @@ def password(args):
     u = User.get(User.email == args.user)
     if args.setpassword:
         logging.info(f"Setting password for {args.user}")
-        u.password = auth.hash_password(args.password)
+        u.password = hash_password(args.password)
         u.save()
         _print_user(u)
     else:
-        ok = auth.verify_password(args.password, u.password)
+        ok = verify_password(args.password, u.password)
         print(f"Password {'matched' if ok else 'did not match'}")
 
 

@@ -19,7 +19,8 @@ setup(
     ],
     install_requires=[
         "fastapi",
-        "peewee",
+        "sqalchemy",
+        "pydantic",
         'authlib',
         'bcrypt'
     ],

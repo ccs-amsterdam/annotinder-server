@@ -1,9 +1,11 @@
 from typing import Optional, Tuple
 
 from peewee import fn, JOIN
+from sqlalchemy.orm import Session
 
-from amcat4annotator.db import Unit, User, Annotation, CodingJob, JobUser, get_jobset, get_jobset_units
-
+##from amcat4annotator.db import Unit, User, Annotation, CodingJob, JobUser, get_jobset, get_jobset_units
+from amcat4annotator.models import Unit, User, Annotation, CodingJob, JobUser
+from amcat4annotator.crud import crud_codingjob
 
 class ValidationError(Exception):
     pass
@@ -16,7 +18,8 @@ class RuleSet:
     - Can coders scroll backwards/forwards
     - What Q/A measures are in place?
     """
-    def __init__(self, rules: dict):
+    def __init__(self, db: Session, rules: dict):
+        self.db = db
         self.rules = rules
 
     def validate_codingjob(self, job: dict):
@@ -58,13 +61,9 @@ class RuleSet:
         Get the first unit currently in progress.
         Return None if none in progress.
         """
-        in_progress = list(
-            Unit.select()
-            .join(Annotation, JOIN.LEFT_OUTER)
-            .where(Unit.codingjob == job.id, Annotation.coder == coder.id, Annotation.status == 'IN_PROGRESS')
-            .limit(1).execute())
+        in_progress = self.db.query(Unit).outerjoin(Annotation).filter(Unit.codingjob_id == job.id, Annotation.coder_id == coder.id, Annotation.status == 'IN_PROGRESS').first()
         if in_progress:
-            return in_progress[0]
+            return in_progress
         return None
 
     @property
@@ -81,15 +80,15 @@ class RuleSet:
         """
         Get all units in a job
         """
-        jobset = get_jobset(job.id, coder.id, assign_set)
-        units = get_jobset_units(jobset)
+        jobset = crud_codingjob.get_jobset(self.db, job.id, coder.id, assign_set)
+        units = crud_codingjob.get_jobset_units(self.db, jobset.id)
         return units
 
     def coded(self, job: CodingJob, coder: User): 
         """
         Get coded units for a given job and user
         """
-        return Annotation.select().join(Unit).where(Unit.codingjob == job.id, Annotation.coder == coder.id, Annotation.status != 'IN_PROGRESS')
+        return self.db.query(Annotation).join(Unit).filter(Unit.codingjob_id == job.id, Annotation.coder_id == coder.id, Annotation.status != 'IN_PROGRESS')
 
     def n_total(self, job: CodingJob, coder: User):
         """
@@ -135,26 +134,20 @@ class FixedSet(RuleSet):
     def n_total(self, job: CodingJob, coder: User):
         # If sets are specified, n is set length. Otherwise n is total number of units
 
-        # We call get_unit_set with assign_set = False to prevent that the user is assigned
+        # We call units with assign_set = False to prevent that the user is assigned
         # to a set if they only viewed the number of items in the job. Note that this also means
         # that a coder might see that a job has x number of units, but if they start the number 
         # might be different if in the meantime another coder started the job (and number of items per set are different)
-        units = self.get_unit_set(job, coder, False)
+        units = self.units(job, coder, False)
         return units.count()
 
     def get_unit(self, job: CodingJob, coder: User, index: int):
-        units = self.get_unit_set(job, coder)
+        units = self.units(job, coder)
         if index < units.count():
             return units[index]       
         return None
 
-    def get_unit_set(self, job: CodingJob, coder: User, assign_set: bool=True):
-        """
-        A user can be assigned to a specific set in a job. 
-        """
-        jobset = get_jobset(job.id, coder.id, assign_set)
-        units = get_jobset_units(jobset)
-        return units
+  
         
     def get_unit(self, job: CodingJob, coder: User, index: int):
         units = self.units(job, coder)
@@ -235,25 +228,25 @@ class CrowdCoding(RuleSet):
         return n_units
 
 
-def get_ruleset(rules: dict) -> RuleSet:
+def get_ruleset(db: Session, rules: dict) -> RuleSet:
     ruleset_class = {
         'crowdcoding': CrowdCoding,
         'fixedset': FixedSet,
     }[rules['ruleset']]
-    return ruleset_class(rules)
+    return ruleset_class(db, rules)
 
 
-def get_next_unit(job: CodingJob, coder: User) -> Optional[Unit]:
+def get_next_unit(db, job: CodingJob, coder: User) -> Optional[Unit]:
     """Return the next unit to code, or None if coder is done"""
-    unit, i = get_ruleset(job.rules).get_next_unit(job, coder)
+    unit, i = get_ruleset(db, job.rules).get_next_unit(job, coder)
     return unit, i
 
-def seek_unit(job: CodingJob, coder: User, index: int) -> Optional[Unit]:
+def seek_unit(db, job: CodingJob, coder: User, index: int) -> Optional[Unit]:
     """Seek a specific unit to code by index"""
-    return get_ruleset(job.rules).seek_unit(job, coder, index)
+    return get_ruleset(db, job.rules).seek_unit(job, coder, index)
 
 
-def get_progress_report(job: CodingJob, coder: User) -> dict:
+def get_progress_report(db, job: CodingJob, coder: User) -> dict:
     """Return a progress report dictionary"""
-    return get_ruleset(job.rules).get_progress(job, coder)
+    return get_ruleset(db, job.rules).get_progress(job, coder)
 

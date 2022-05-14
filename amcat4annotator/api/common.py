@@ -1,17 +1,19 @@
 
-from amcat4annotator.db import CodingJob, JobSet, get_jobset
+from amcat4annotator.models import CodingJob, JobSet
 from fastapi import HTTPException
+from amcat4annotator.crud import crud_codingjob
+from sqlalchemy.orm import Session
 
 
-def _job(job_id: int) -> CodingJob:
-    job = CodingJob.get_or_none(CodingJob.id == job_id)
+def _job(db: Session, job_id: int) -> CodingJob:
+    job = db.query(CodingJob).filter(CodingJob.id == job_id).first()
     if not job:
         HTTPException(status_code=404)
     return job
 
 
-def _jobset(job_id: int, user_id: int, assign_set: bool = False) -> JobSet:
-    jobset = get_jobset(job_id, user_id, assign_set)
+def _jobset(db: Session, job_id: int, user_id: int, assign_set: bool = False) -> JobSet:
+    jobset = crud_codingjob.get_jobset(db, job_id, user_id, assign_set)
     if not jobset:
         HTTPException(status_code=404)
     return jobset

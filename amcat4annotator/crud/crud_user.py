@@ -71,7 +71,7 @@ def get_user_jobs(db: Session, user: User):
         jobs = db.query(CodingJob).filter(CodingJob.id == user.restricted_job).all()
     else:
         open_jobs = db.query(CodingJob).filter(CodingJob.restricted == False).all()
-        restricted_jobs = db.query(CodingJob).outerjoin(JobUser).filter(CodingJob.restricted == True, JobUser.user_id == user.id, JobUser.can_code == True).all()
+        restricted_jobs = db.query(CodingJob).join(JobUser).filter(CodingJob.restricted == True, JobUser.user_id == user.id, JobUser.can_code == True).all()
         jobs = open_jobs + restricted_jobs
 
     jobs_with_progress = []

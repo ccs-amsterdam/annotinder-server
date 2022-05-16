@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from amcat4annotator.crud import crud_user
 from amcat4annotator.database import engine, get_db
 from amcat4annotator.auth import verify_jobtoken, get_token
+from amcat4annotator.models import User
 
 
 app_annotator_guest = APIRouter(prefix='/guest', tags=["annotator guest"])
@@ -30,12 +31,13 @@ def redeem_job_token(token: str = Query(None, description="A token for getting a
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Job token not valid")
     if not user_id:
         x = hashlib.sha1()
-        x.update(str(User.select().count()).encode('utf-8'))
+        n_users = db.query(User).count()
+        x.update(str(n_users).encode('utf-8'))
         user_id = x.hexdigest()
     email = f"jobuser__{job.id}__{user_id}"
     user = crud_user.get_user(db, email)
     if not user:
-        crud_user.create_user(db, email, restricted_job=job)
+        user = crud_user.create_user(db, email, restricted_job=job.id)
     return {"token": get_token(user),
             "job_id": job.id,
             "email": user.email,

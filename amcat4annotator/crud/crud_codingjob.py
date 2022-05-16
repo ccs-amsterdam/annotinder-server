@@ -125,9 +125,9 @@ def get_jobs(db: Session) -> list:
     return data
 
 def get_annotations(db: Session, job_id: int): 
-    ann_unit_coder = db.query(Annotation, Unit, User).join(Unit).join(User).filter(Unit.codingjob_id == job_id).all()
-    for annotation, unit, user in ann_unit_coder:
-        yield {"unit_id": unit.external_id, "coder": user.email, "annotation": annotation.annotation, "status": annotation.status}   
+    ann_unit_coder = db.query(Annotation, Unit, User, JobSet).join(Unit).join(User).join(JobSet).filter(Unit.codingjob_id == job_id).all()
+    for annotation, unit, user, jobset in ann_unit_coder:
+        yield {"jobset": jobset.jobset, "unit_id": unit.external_id, "coder": user.email, "annotation": annotation.annotation, "status": annotation.status}   
     
 def get_unit_annotations(db: Session, unit_id: int, coder_id: int):
     return db.query(Annotation).filter(Annotation.unit_id == unit_id, Annotation.coder_id == coder_id).first()
@@ -138,7 +138,7 @@ def set_annotation(db: Session, unit: int, coder: User, annotation: dict, status
     
     ann = db.query(Annotation).filter(Annotation.unit_id == unit.id, Annotation.coder_id == coder.id).first()
     if ann is None:
-        ann = Annotation(unit_id=unit.id, coder_id=coder.id, annotation=annotation, jobset=jobuser.jobset, status=status)
+        ann = Annotation(unit_id=unit.id, coder_id=coder.id, annotation=annotation, jobset_id=jobuser.jobset_id, status=status)
         db.add(ann)
     else:
         ann.annotation = annotation
@@ -151,9 +151,9 @@ def get_jobset(db: Session, job_id: int, user_id: int, assign_set: bool) -> JobU
     jobuser = db.query(JobUser).filter(JobUser.codingjob_id == job_id, JobUser.user_id == user_id).first()
 
     if jobuser is not None:
-        if jobuser.jobset is not None:
+        if jobuser.jobset_id is not None:
             ## if there is a jobuser with a jobset assigned, we're good.
-            return db.query(JobSet).filter(JobSet.codingjob_id == job_id, JobSet.jobset == jobuser.jobset).first()
+            return db.query(JobSet).filter(JobSet.codingjob_id == job_id, JobSet.id == jobuser.jobset_id).first()
             
     
     jobsets = db.query(JobSet).filter(JobSet.codingjob_id == job_id)
@@ -168,19 +168,10 @@ def get_jobset(db: Session, job_id: int, user_id: int, assign_set: bool) -> JobU
 
     if assign_set: 
         if jobuser is None:
-            jobuser = JobUser(user_id=user_id, codingjob_id=job_id, jobset=jobset.jobset)
+            jobuser = JobUser(user_id=user_id, codingjob_id=job_id, jobset_id=jobset.id)
             db.add(jobuser)
         else:
-            jobuser.jobset = jobset.jobset
+            jobuser.jobset_id = jobset.id
         db.commit()
 
     return jobset
-
-    
-def get_jobset_units(db: Session, jobset_id: int):
-    """
-    Returns a peewee query that selects the units assigned to a jobset,
-    or all units if the jobset does not have a specific unit_set
-    """
-    return db.query(Unit).join(JobSetUnits).filter(JobSetUnits.jobset_id == jobset_id)
-    

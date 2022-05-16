@@ -221,7 +221,9 @@ def progress(job_id, user: User = Depends(auth_user), db: Session = Depends(get_
     """
     job = _job(db, job_id)
     check_job_user(db, user, job)
-    return rules.get_progress_report(db, job, user)
+    progress = rules.get_progress_report(db, job, user)
+    print(progress)
+    return progress
 
 
 @app_annotator_codingjob.get("/{job_id}/unit")

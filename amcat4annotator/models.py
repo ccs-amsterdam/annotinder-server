@@ -88,7 +88,7 @@ class JobUser(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)    
     user_id = Column(Integer, ForeignKey('users.id'), index=True)
     codingjob_id = Column(Integer, ForeignKey('codingjobs.id'), index=True)
-    jobset = Column(String, nullable=True)
+    jobset_id = Column(Integer, ForeignKey('jobsets.id'), index=True)
     can_code = Column(Boolean, default=True)
     can_edit = Column(Boolean, default=False)
 
@@ -101,9 +101,9 @@ class Annotation(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)    
     unit_id = Column(Integer, ForeignKey('units.id'), index=True)
-    coder_id = Column(Integer, ForeignKey('users.id'))
-    jobset = Column(String)
-    status = Column(String)
+    coder_id = Column(Integer, ForeignKey('users.id'), index=True)
+    jobset_id = Column(Integer, ForeignKey('jobsets.id'), index=True)
+    status = Column(String, index=True)
     modified = Column(DateTime(timezone=True), server_default=func.now())
     annotation = Column(JsonString)
  

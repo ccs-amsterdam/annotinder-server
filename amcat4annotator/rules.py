@@ -1,10 +1,9 @@
 from typing import Optional, Tuple
 
-from peewee import fn, JOIN
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
-##from amcat4annotator.db import Unit, User, Annotation, CodingJob, JobUser, get_jobset, get_jobset_units
-from amcat4annotator.models import Unit, User, Annotation, CodingJob, JobUser
+from amcat4annotator.models import Unit, User, Annotation, CodingJob, JobSetUnits
 from amcat4annotator.crud import crud_codingjob
 
 class ValidationError(Exception):
@@ -61,9 +60,9 @@ class RuleSet:
         Get the first unit currently in progress.
         Return None if none in progress.
         """
-        in_progress = self.db.query(Unit).outerjoin(Annotation).filter(Unit.codingjob_id == job.id, Annotation.coder_id == coder.id, Annotation.status == 'IN_PROGRESS').first()
+        in_progress = self.db.query(Annotation.unit_id).filter(Annotation.coder_id == coder.id, Annotation.status == 'IN_PROGRESS').first()
         if in_progress:
-            return in_progress
+            return self.db.query(Unit).filter(Unit.id == in_progress.unit_id).first()
         return None
 
     @property
@@ -81,9 +80,8 @@ class RuleSet:
         Get all units in a job
         """
         jobset = crud_codingjob.get_jobset(self.db, job.id, coder.id, assign_set)
-        units = crud_codingjob.get_jobset_units(self.db, jobset.id)
-        return units
-
+        return self.db.query(Unit).join(JobSetUnits).filter(JobSetUnits.jobset_id == jobset.id)
+        
     def coded(self, job: CodingJob, coder: User): 
         """
         Get coded units for a given job and user
@@ -147,13 +145,7 @@ class FixedSet(RuleSet):
             return units[index]       
         return None
 
-  
-        
-    def get_unit(self, job: CodingJob, coder: User, index: int):
-        units = self.units(job, coder)
-        if index < units.count():
-            return units[index]       
-        return None
+
     
 
 
@@ -174,32 +166,26 @@ class CrowdCoding(RuleSet):
 
         # for the following steps, need to have the unit selection for the user's jobset
         # and the jobset itself for looking only at annotations from other users in the same set
-        jobset = get_jobset(job.id, coder.id, True)
-        units = get_jobset_units(jobset)
+        jobset = crud_codingjob.get_jobset(self.db, job.id, coder.id, True)
 
-        # (2) Is there a unit left that has been coded by no one in the same set as the coder??
-        uncoded = list(
-            units
-            .join(Annotation, JOIN.LEFT_OUTER)
-            .where((Annotation.id.is_null()) | (Annotation.jobset != jobset.jobset))
-            .limit(1).execute())
+        # (2) Is there a unit left in the jobset that has not yet been annotated by anyone?
+        uncoded = self.db.query(JobSetUnits).outerjoin(Annotation, JobSetUnits.jobset_id == Annotation.jobset_id).filter(JobSetUnits.jobset_id == jobset.id, Annotation.id == None).first()        
         if uncoded:
-            return uncoded[0], unit_index
+            return self.db.query(Unit).filter(Unit.id == uncoded.unit_id).first(), unit_index
 
-        # (3) select a unit that is uncoded by me, and least coded by anyone else
-        coded = {t[0] for t in Annotation.select(Unit.id).join(Unit).
-            where(Unit.codingjob == job.id,
-                  Annotation.coder == coder.id).tuples()}
-        least_coded = list(
-            units
-            .join(Annotation)
-            .where(Unit.id.not_in(coded), Annotation.jobset == jobset.jobset)
-            .group_by(Unit.id)
-            .order_by(fn.Count(Annotation.id))
-            .limit(1))
-
+        # (3) select a unit from the jobset that is uncoded by me, and least coded by anyone else in the same jobset
+        coded = self.db.query(Annotation.unit_id).filter(Annotation.jobset_id == jobset.id, Annotation.coder_id == coder.id).all()
+        coded_id = [a.unit_id for a in coded] 
+        
+        least_coded = (
+            self.db.query(JobSetUnits.unit_id).outerjoin(Annotation, JobSetUnits.jobset_id == Annotation.jobset_id)
+            .filter(JobSetUnits.jobset_id == jobset.id, JobSetUnits.unit_id.not_in(coded_id))
+            .group_by(JobSetUnits.unit_id)
+            .order_by(func.count(Annotation.id))
+            .first()
+        )
         if least_coded:
-            return least_coded[0], unit_index
+            return self.db.query(Unit).filter(Unit.id == least_coded.unit_id).first(), unit_index
 
         # No units were selected, so done coding I guess?
         # (should we add a check for whether n_coded == self.n_total(job,coder) ?)
@@ -209,14 +195,12 @@ class CrowdCoding(RuleSet):
         if index >= self.n_total(job, coder):
             return None
 
-        coded = sorted(Annotation.select(Annotation.id, Unit.id).join(Unit)
-                       .where(Unit.codingjob == job.id, Annotation.coder == coder.id)
-                       .tuples())
+        coded = self.db.query(Unit.id).join(Annotation).where(Unit.codingjob_id == job.id, Annotation.coder_id == coder.id).all()
         if index >= len(coded):
             return None
         if self.can_seek_backwards == False & index < len(coded): 
-                return None
-        return Unit.get_by_id(coded[index][1])
+            return None
+        return self.db.query(Unit).filter(Unit.id == coded[index].id).first()
 
     def n_total(self, job: CodingJob, coder: User):
         """

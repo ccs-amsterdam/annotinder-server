@@ -60,7 +60,7 @@ class RuleSet:
         Get the first unit currently in progress.
         Return None if none in progress.
         """
-        in_progress = self.db.query(Annotation.unit_id).filter(Annotation.coder_id == coder.id, Annotation.status == 'IN_PROGRESS').first()
+        in_progress = self.db.query(Annotation.unit_id).join(Unit).filter(Unit.codingjob_id == job.id, Annotation.coder_id == coder.id, Annotation.status == 'IN_PROGRESS').first()
         if in_progress:
             return self.db.query(Unit).filter(Unit.id == in_progress.unit_id).first()
         return None

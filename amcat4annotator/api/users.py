@@ -1,8 +1,6 @@
 from fastapi import APIRouter, HTTPException, status, Response
 from fastapi.params import Body, Depends
 from fastapi.security import OAuth2PasswordRequestForm
-
-from peewee import fn
 from sqlalchemy.orm import Session
 
 from amcat4annotator import rules

@@ -6,7 +6,7 @@ setup(
     name="amcat4annotator",
     version="0.30",
     description="Annotator Backend API for AmCAT4 Text Analysis",
-    author="Wouter van Atteveldt, Farzam Fanitabasi, Kasper Welbers",
+    author="Kasper Welbers, Wouter van Atteveldt, Farzam Fanitabasi",
     author_email="wouter@vanatteveldt.com",
     packages=["amcat4annotator", "amcat4annotator.api"],
     include_package_data=True,
@@ -19,15 +19,14 @@ setup(
     ],
     install_requires=[
         "fastapi",
-        "sqalchemy",
+        "sqlalchemy",
         "pydantic",
         'authlib',
         'bcrypt'
     ],
     extras_require={
         'dev': [
-            'uvicorn[standard]',
-            'gunicorn',
+            'uvicorn',
             'pytest',
             'codecov',
             'python-multipart'

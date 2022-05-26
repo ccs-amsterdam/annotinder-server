@@ -45,7 +45,7 @@ def add_jobsets(db: Session, job: CodingJob, jobsets: list, codebook: dict) -> N
             jobset['codebook'] = codebook
     if len({s['name'] for s in jobsets}) < len(jobsets):
         raise HTTPException(status_code=400, detail='jobset items must have unique names')
-
+    
     for jobset in jobsets:
         db_jobset = JobSet(codingjob=job, jobset=jobset['name'], codebook=jobset['codebook'])
         db.add(db_jobset)
@@ -58,7 +58,7 @@ def add_jobsets(db: Session, job: CodingJob, jobsets: list, codebook: dict) -> N
                 unit = db.query(Unit.id).filter(Unit.codingjob_id == job.id, Unit.external_id == ext_id).first()
                 unit_set.append(JobSetUnits(jobset_id=db_jobset.id, unit_id=unit.id))
         else:
-            for u in db.query(Unit.id).filter(Unit.codingjob_id == job).all():
+            for u in db.query(Unit.id).filter(Unit.codingjob_id == job.id).all():
                 unit_set.append(JobSetUnits(jobset_id=db_jobset.id, unit_id=u.id))
         db.bulk_save_objects(unit_set)
         db.commit()

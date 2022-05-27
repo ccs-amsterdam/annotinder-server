@@ -197,7 +197,10 @@ def get_job_token(job_id: int, user: User = Depends(auth_user), db: Session = De
     Create a 'job token' for this job
     This allows anyone to code units on this job
     """
-    check_admin(user)
+    ## shouldn't have to be admin to get token, because we want people to be able to share job tokens 
+    ## But this should only be possible
+    ## for jobs that allow anonymous coders (and that should be something only admin/owner can set)
+    ## check_admin(user)
     job = _job(db, job_id)
     token = get_jobtoken(job)
     return dict(token=token)
@@ -222,7 +225,6 @@ def progress(job_id, user: User = Depends(auth_user), db: Session = Depends(get_
     job = _job(db, job_id)
     check_job_user(db, user, job)
     progress = rules.get_progress_report(db, job, user)
-    print(progress)
     return progress
 
 

@@ -21,7 +21,7 @@ def create_codingjob(db: Session, title: str, codebook: dict, jobsets: list, pro
     db.commit()
     db.refresh(job)
 
-    units = [Unit(codingjob_id=job.id, external_id=u['id'], unit=u['unit'], gold=u.get('gold')) for u in units]
+    units = [Unit(codingjob_id=job.id, external_id=u['id'], unit=u['unit'], fixed_index=u.get('fixed_index'), gold=u.get('gold')) for u in units]
     db.bulk_save_objects(units)
     db.commit()
 

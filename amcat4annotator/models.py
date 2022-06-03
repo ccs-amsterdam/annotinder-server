@@ -58,6 +58,7 @@ class Unit(Base):
     codingjob_id = Column(Integer, ForeignKey("codingjobs.id"), index=True)
     external_id = Column(String, index=True)  
     unit = Column(JsonString, nullable=True)
+    fixed_index = Column(Integer, index=True)
     gold = Column(JsonString, nullable=True)
 
     annotations = relationship("Annotation", back_populates='unit')

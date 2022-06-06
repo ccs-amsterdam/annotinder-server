@@ -65,6 +65,22 @@ class RuleSet:
             return self.db.query(Unit).filter(Unit.id == in_progress.unit_id).first()
         return None
 
+    def get_fixed_index_unit(self, job: CodingJob, coder: User, unit_index: int):
+        units = self.units(job, coder)
+        unit = self.db.query(Unit).filter(Unit.codingjob_id == job.id, Unit.fixed_index == unit_index).first()
+        if not unit:
+            n = units.count()
+            unit = self.db.query(Unit).filter(Unit.codingjob_id == job.id, Unit.fixed_index == (unit_index-n)).first()
+        return unit
+
+    def get_gold_unit(self, job: CodingJob, coder: User):
+        return None
+
+    ## make a general get_next_unit that does:
+    ## - get_unit_in_progress
+    ## - get_fixed_index_unit
+    ## - get_gold_unit
+
     @property
     def can_seek_backwards(self):
         if 'can_seek_backwards' in self.rules: return self.rules['can_seek_backwards']
@@ -114,7 +130,12 @@ class FixedSet(RuleSet):
         if in_progress:
             return in_progress, unit_index
 
-        # (2) select the next unit
+        # (2) Is there a fixed index unit?
+        unit = self.get_fixed_index_unit(job, coder, unit_index)
+        if unit:
+            return unit, unit_index
+
+        # (3) select the next unit
         return self.get_unit(job, coder, unit_index), unit_index
 
     def seek_unit(self, job: CodingJob, coder: User, index: int) -> Optional[Unit]:
@@ -146,10 +167,6 @@ class FixedSet(RuleSet):
         return None
 
 
-    
-
-
-
 class CrowdCoding(RuleSet):
     """
     Prioritizes coding the entire set as fast as possible using multiple coders.
@@ -164,21 +181,26 @@ class CrowdCoding(RuleSet):
         if in_progress:
             return in_progress, unit_index
 
+        # (2) Is there a fixed index unit?
+        unit = self.get_fixed_index_unit(job, coder, unit_index)
+        if unit:
+            return unit, unit_index
+
         # for the following steps, need to have the unit selection for the user's jobset
         # and the jobset itself for looking only at annotations from other users in the same set
         jobset = crud_codingjob.get_jobset(self.db, job.id, coder.id, True)
-
-        # (2) Is there a unit left in the jobset that has not yet been annotated by anyone?
-        uncoded = self.db.query(JobSetUnits).outerjoin(Annotation, JobSetUnits.jobset_id == Annotation.jobset_id).filter(JobSetUnits.jobset_id == jobset.id, Annotation.id == None).first()        
+        
+        # (3) Is there a unit left in the jobset that has not yet been annotated by anyone?
+        uncoded = self.db.query(JobSetUnits).outerjoin(Annotation, JobSetUnits.unit_id == Annotation.unit_id).filter(JobSetUnits.jobset_id == jobset.id, Annotation.id == None).first()        
         if uncoded:
             return self.db.query(Unit).filter(Unit.id == uncoded.unit_id).first(), unit_index
 
-        # (3) select a unit from the jobset that is uncoded by me, and least coded by anyone else in the same jobset
+        # (4) select a unit from the jobset that is uncoded by me, and least coded by anyone else in the same jobset
         coded = self.db.query(Annotation.unit_id).filter(Annotation.jobset_id == jobset.id, Annotation.coder_id == coder.id).all()
         coded_id = [a.unit_id for a in coded] 
         
         least_coded = (
-            self.db.query(JobSetUnits.unit_id).outerjoin(Annotation, JobSetUnits.jobset_id == Annotation.jobset_id)
+            self.db.query(JobSetUnits.unit_id).outerjoin(Annotation, JobSetUnits.unit_id == Annotation.unit_id)
             .filter(JobSetUnits.jobset_id == jobset.id, JobSetUnits.unit_id.not_in(coded_id))
             .group_by(JobSetUnits.unit_id)
             .order_by(func.count(Annotation.id))

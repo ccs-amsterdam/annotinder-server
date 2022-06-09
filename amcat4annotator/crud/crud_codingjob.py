@@ -138,6 +138,9 @@ def set_annotation(db: Session, unit: int, coder: User, annotation: dict, status
     
     ann = db.query(Annotation).filter(Annotation.unit_id == unit.id, Annotation.coder_id == coder.id).first()
     if ann is None:
+        if ann.status == 'DONE': 
+            status = 'DONE' ## cannot undo DONE
+                
         ann = Annotation(unit_id=unit.id, coder_id=coder.id, annotation=annotation, jobset_id=jobuser.jobset_id, status=status)
         db.add(ann)
     else:

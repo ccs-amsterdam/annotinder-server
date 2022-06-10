@@ -129,10 +129,12 @@ def get_annotations(db: Session, job_id: int):
     for annotation, unit, user, jobset in ann_unit_coder:
         yield {"jobset": jobset.jobset, "unit_id": unit.external_id, "coder": user.email, "annotation": annotation.annotation, "status": annotation.status}   
     
+
 def get_unit_annotations(db: Session, unit_id: int, coder_id: int):
     return db.query(Annotation).filter(Annotation.unit_id == unit_id, Annotation.coder_id == coder_id).first()
 
-def set_annotation(db: Session, unit: int, coder: User, annotation: dict, status: str) -> Annotation:
+
+def set_annotation(db: Session, unit: Unit, coder: User, annotation: list, status: str) -> Annotation:
     """Create a new annotation or replace an existing annotation"""
     jobuser = db.query(JobUser).filter(JobUser.codingjob_id == unit.codingjob_id, JobUser.user_id == coder.id).first()
     
@@ -149,6 +151,64 @@ def set_annotation(db: Session, unit: int, coder: User, annotation: dict, status
         ann.modified = datetime.datetime.now()
     db.commit()
     return ann
+
+
+def check_gold(unit: Unit, annotation: Annotation):
+    """
+    If unit has a gold standard, see if annotations match it.
+    This can have two consequences:
+    - The coder can take damage for getting it wrong.
+    - The coder can receive gold_feedback. The unit will then be marked 
+      as IN_PROGRESS, and the coder can't continue before the right answer is given   
+    """
+    if unit.gold is None:
+        return []
+    gold_feedback = []
+    damage = 0
+    for g in unit.gold['matches']:
+        ## only check gold matches for variables that have been coded
+        ## (if unit is done, all variables are assumed to have been coded)
+        variable_coded = unit.status == "DONE"
+        found_match = False
+        for a in annotation.annotation:
+            if g['variable'] != a['variable']: continue
+            variable_coded = True
+            if g['field'] is not None: 
+                if g['field'] != a['field']: continue;
+            if g['offset'] is not None:
+                if g['offset'] != a['offset']: continue;
+            if g['length'] is not None:
+                if g['length'] != a['length']: continue;
+
+            op = g['operator'] if 'operator' in g else '=='
+            if op == "==" and a['value'] == g['value']: found_match = True
+            if op == "<=" and a['value'] <= g['value']: found_match = True
+            if op == "<" and a['value'] < g['value']: found_match = True
+            if op == ">=" and a['value'] >= g['value']: found_match = True
+            if op == ">" and a['value'] > g['value']: found_match = True
+            if op == "!=" and a['value'] != g['value']: found_match = True
+            if found_match: continue
+        if found_match: continue
+        if not variable_coded: continue
+
+        if 'damage' in g: damage += g['damage']
+        if unit.gold['if_wrong'] == 'retry':
+            feedback = {"variable": g['variable']}
+            if (g['message']): feedback['message'] = g['message']
+            gold_feedback.push(feedback)
+
+    if 'redemption' not in unit.gold or unit.gold['redemption']:
+        unit.damage = damage
+    else:
+        unit.damage = max(damage, unit.damage)
+
+    if len(gold_feedback) > 0:
+        unit.status = "IN_PROGRESS"
+    unit.gold_feedback = gold_feedback
+    
+    return gold_feedback
+    
+
 
 def get_jobset(db: Session, job_id: int, user_id: int, assign_set: bool) -> JobUser:
     jobuser = db.query(JobUser).filter(JobUser.codingjob_id == job_id, JobUser.user_id == user_id).first()
@@ -178,3 +238,5 @@ def get_jobset(db: Session, job_id: int, user_id: int, assign_set: bool) -> JobU
         db.commit()
 
     return jobset
+
+    

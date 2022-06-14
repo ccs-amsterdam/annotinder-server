@@ -26,7 +26,8 @@ setup(
     ],
     extras_require={
         'dev': [
-            'uvicorn',
+            'uvicorn[standard]',
+            'gunicorn',
             'pytest',
             'codecov',
             'python-multipart'

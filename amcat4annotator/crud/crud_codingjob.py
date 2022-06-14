@@ -16,20 +16,25 @@ def create_codingjob(db: Session, title: str, codebook: dict, jobsets: list, pro
     if authorization is None:
         authorization = {}
     restricted = authorization.get('restricted', False)
-    job = CodingJob(title=title, rules=rules, debriefing=debriefing, creator=creator, provenance=provenance, restricted=restricted)
-    db.add(job)
-    db.commit()
-    db.refresh(job)
 
-    units = [Unit(codingjob_id=job.id, external_id=u['id'], unit=u['unit'], fixed_index=u.get('fixed_index'), gold=u.get('gold')) for u in units]
-    db.bulk_save_objects(units)
-    db.commit()
+    try:
+        job = CodingJob(title=title, rules=rules, debriefing=debriefing, creator=creator, provenance=provenance, restricted=restricted)
+        db.add(job)
+        db.flush()
+        db.refresh(job)
 
-    users = authorization.get('users', [])
-    if users:
-        set_job_coders(db, codingjob_id=job.id, emails=users)
+        units = [Unit(codingjob_id=job.id, external_id=u['id'], unit=u['unit'], type=u.get('type', None), gold=u.get('gold')) for u in units]
+        db.bulk_save_objects(units)
+        db.flush()
 
-    add_jobsets(db, job, jobsets, codebook)
+        users = authorization.get('users', [])
+        if users:
+            set_job_coders(db, codingjob_id=job.id, emails=users)
+
+        add_jobsets(db, job, jobsets, codebook)
+        db.commit()
+    except:
+        db.rollback()
     return job
 
 
@@ -49,19 +54,45 @@ def add_jobsets(db: Session, job: CodingJob, jobsets: list, codebook: dict) -> N
     for jobset in jobsets:
         db_jobset = JobSet(codingjob=job, jobset=jobset['name'], codebook=jobset['codebook'])
         db.add(db_jobset)
-        db.commit()
+        db.flush()
         db.refresh(db_jobset)
 
-        unit_set = []
-        if 'unit_set' in jobset and jobset['unit_set'] is not None:
-            for ext_id in jobset['unit_set']:
+        def get_units(db, jobset, unit_type):
+            """
+            Units are organized in types. If a jobset doesn't have a set for a specific type,
+            use all units of this type. Types are:
+            - pre: units shown at the start of a job. Typically survey/experiment questions
+            - train: units to make a training loop, commenced just after pre. units need to have 'gold'
+            - test: units for testing whether coder is performing well. Will be mixed with the regular units. Need to have 'gold'
+            - unit: A regular unit, to be annotated
+            - post: units shown at the end of a job
+            """
+            ids_key = unit_type + '_ids'
+            if ids_key not in jobset or jobset[ids_key] is None:
+                # if no id set is specified, use all units of this type
+                units = db.query(Unit.id).filter(Unit.codingjob_id == job.id, Unit.type == unit_type).all()
+                ids = [u.external_id for u in units]
+            else:
+                ids = jobset[ids_key]
+            for ext_id in ids:
                 unit = db.query(Unit.id).filter(Unit.codingjob_id == job.id, Unit.external_id == ext_id).first()
-                unit_set.append(JobSetUnits(jobset_id=db_jobset.id, unit_id=unit.id))
-        else:
-            for u in db.query(Unit.id).filter(Unit.codingjob_id == job.id).all():
-                unit_set.append(JobSetUnits(jobset_id=db_jobset.id, unit_id=u.id))
+                yield JobSetUnits(jobset_id=db_jobset.id, unit_id=unit.id, type=unit_type, has_gold=unit.gold is not None)
+                ## TODO: This would be a good place for adding a check for whether gold can be optained with current codebook
+                
+        unit_set = []
+        for pre_unit in get_units(db, jobset, 'pre'):
+            unit_set.append(pre_unit)
+        for unit in get_units(db, jobset, 'train'):
+            unit_set.append(unit)
+        for unit in get_units(db, jobset, 'test'):
+            unit_set.append(unit)
+        for unit in get_units(db, jobset, 'code'):
+            unit_set.append(unit)
+        for post_unit in get_units(db, jobset, 'post'):
+            unit_set.append(post_unit)
+
         db.bulk_save_objects(unit_set)
-        db.commit()
+        db.flush()
 
 
 def get_job_coders(db, codingjob_id: int) -> Iterable[str]:
@@ -204,7 +235,6 @@ def check_gold(unit: Unit, annotation: Annotation):
 
     if len(gold_feedback) > 0:
         unit.status = "IN_PROGRESS"
-    unit.gold_feedback = gold_feedback
     
     return gold_feedback
     

@@ -146,6 +146,7 @@ def get_job(job_id: int,
     }
     if annotations:
         cj['annotations'] = [a for a in crud_codingjob.get_annotations(db, job_id)]
+    
     return cj
 
 
@@ -250,6 +251,8 @@ def get_unit(job_id,
     if a:
         result['annotation'] = a.annotation
         result['status'] = a.status
+        result['gold_feedback'] = crud_codingjob.check_gold(u, a)
+
     return result
 
 

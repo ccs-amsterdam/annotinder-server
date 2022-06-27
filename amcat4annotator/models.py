@@ -81,7 +81,8 @@ class JobSetUnits(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)      
     jobset_id = Column(Integer, ForeignKey("jobsets.id"), index=True)
     unit_id = Column(Integer, ForeignKey("units.id"), index=True)
-  
+    position = Column(String, default=None, index=True)
+    has_gold = Column(Boolean, default=False)
     
 class JobUser(Base):
     __tablename__ = 'jobusers'

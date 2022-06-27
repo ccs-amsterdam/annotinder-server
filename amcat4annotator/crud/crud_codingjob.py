@@ -1,4 +1,5 @@
 import logging
+from types import ClassMethodDescriptorType
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -23,7 +24,7 @@ def create_codingjob(db: Session, title: str, codebook: dict, jobsets: list, pro
         db.flush()
         db.refresh(job)
 
-        units = [Unit(codingjob_id=job.id, external_id=u['id'], unit=u['unit'], type=u.get('type', None), gold=u.get('gold')) for u in units]
+        units = [Unit(codingjob_id=job.id, external_id=u['id'], unit=u['unit'], type=u.get('type', 'code'), gold=u.get('gold')) for u in units]
         db.bulk_save_objects(units)
         db.flush()
 
@@ -36,7 +37,6 @@ def create_codingjob(db: Session, title: str, codebook: dict, jobsets: list, pro
     except:
         db.rollback()
     return job
-
 
 def add_jobsets(db: Session, job: CodingJob, jobsets: list, codebook: dict) -> None:
     if jobsets is None: 

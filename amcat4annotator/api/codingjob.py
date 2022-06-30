@@ -80,6 +80,7 @@ def create_job(title: str = Body(None, description='The title of the codingjob')
     try:
         job = crud_codingjob.create_codingjob(db, title=title, codebook=codebook, jobsets=jobsets, provenance=provenance, rules=rules, debriefing=debriefing, creator=user, units=units, authorization=authorization)
     except Exception as e:
+        db.rollback()
         logging.error(e)
         raise HTTPException(status_code=400, detail='Could not create codingjob')
 

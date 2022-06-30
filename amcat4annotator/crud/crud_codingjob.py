@@ -18,24 +18,23 @@ def create_codingjob(db: Session, title: str, codebook: dict, jobsets: list, pro
         authorization = {}
     restricted = authorization.get('restricted', False)
 
-    try:
-        job = CodingJob(title=title, rules=rules, debriefing=debriefing, creator=creator, provenance=provenance, restricted=restricted)
-        db.add(job)
-        db.flush()
-        db.refresh(job)
+    job = CodingJob(title=title, rules=rules, debriefing=debriefing, creator=creator, provenance=provenance, restricted=restricted)
+    db.add(job)
+    db.flush()
+    db.refresh(job)
 
-        units = [Unit(codingjob_id=job.id, external_id=u['id'], unit=u['unit'], type=u.get('type', 'code'), gold=u.get('gold')) for u in units]
-        db.bulk_save_objects(units)
-        db.flush()
+    units = [Unit(codingjob_id=job.id, external_id=u['id'], unit=u['unit'], unit_type=u.get('type', 'code'), conditions=u.get('conditions')) for u in units]
+    db.bulk_save_objects(units)
+    db.flush()
 
-        users = authorization.get('users', [])
-        if users:
-            set_job_coders(db, codingjob_id=job.id, emails=users)
+    users = authorization.get('users', [])
+    if users:
+        set_job_coders(db, codingjob_id=job.id, emails=users)
 
-        add_jobsets(db, job, jobsets, codebook)
-        db.commit()
-    except:
-        db.rollback()
+    add_jobsets(db, job, jobsets, codebook)
+    
+    # Only commits at this point, so create_codingjob can be wrapped in a try/except that rolls back changes on fail    
+    db.commit()
     return job
 
 def add_jobsets(db: Session, job: CodingJob, jobsets: list, codebook: dict) -> None:
@@ -61,22 +60,25 @@ def add_jobsets(db: Session, job: CodingJob, jobsets: list, codebook: dict) -> N
             """
             Units are organized in types. If a jobset doesn't have a set for a specific type,
             use all units of this type. Types are:
-            - pre: units shown at the start of a job. Typically survey/experiment questions
-            - train: units to make a training loop, commenced just after pre. units need to have 'gold'
-            - test: units for testing whether coder is performing well. Will be mixed with the regular units. Need to have 'gold'
-            - unit: A regular unit, to be annotated
+            - pre: units shown at the start of a job. Typically survey/experiment questions. Can have 'conditions' to specify required answers.
+                   For example, only allowing participants to continue if they meet a minimum age. 
+            - train: units to make a training loop, commenced just after pre. Train units can have 'conditions' to specify correct answers.
+                     Coders then see whether they answered correctly.
+            - test: units for testing whether coder is performing well. Will be mixed with the regular units. Test units should have
+                    'conditions' specifying the correct answers. Coders that don't give the right answers receive damage
+            - code: A regular unit, to be annotated
             - post: units shown at the end of a job
             """
             ids_key = unit_type + '_ids'
             if ids_key not in jobset or jobset[ids_key] is None:
                 # if no id set is specified, use all units of this type
-                units = db.query(Unit.id).filter(Unit.codingjob_id == job.id, Unit.type == unit_type).all()
+                units = db.query(Unit.external_id).filter(Unit.codingjob_id == job.id, Unit.unit_type == unit_type).all()
                 ids = [u.external_id for u in units]
             else:
                 ids = jobset[ids_key]
             for ext_id in ids:
-                unit = db.query(Unit.id).filter(Unit.codingjob_id == job.id, Unit.external_id == ext_id).first()
-                yield JobSetUnits(jobset_id=db_jobset.id, unit_id=unit.id, type=unit_type, has_gold=unit.gold is not None)
+                unit = db.query(Unit.id, Unit.conditions).filter(Unit.codingjob_id == job.id, Unit.external_id == ext_id).first()
+                yield JobSetUnits(jobset_id=db_jobset.id, unit_id=unit.id, unit_type=unit_type, has_conditions=unit.conditions is not None)
                 ## TODO: This would be a good place for adding a check for whether gold can be optained with current codebook
                 
         unit_set = []
@@ -170,13 +172,12 @@ def set_annotation(db: Session, unit: Unit, coder: User, annotation: list, statu
     jobuser = db.query(JobUser).filter(JobUser.codingjob_id == unit.codingjob_id, JobUser.user_id == coder.id).first()
     
     ann = db.query(Annotation).filter(Annotation.unit_id == unit.id, Annotation.coder_id == coder.id).first()
-    if ann is None:
-        if ann.status == 'DONE': 
-            status = 'DONE' ## cannot undo DONE
-                
+    if ann is None:        
         ann = Annotation(unit_id=unit.id, coder_id=coder.id, annotation=annotation, jobset_id=jobuser.jobset_id, status=status)
         db.add(ann)
     else:
+        if ann.status == 'DONE': 
+            status = 'DONE' ## cannot undo DONE
         ann.annotation = annotation
         ann.status = status
         ann.modified = datetime.datetime.now()

@@ -9,6 +9,7 @@ class JsonString(TypeDecorator):
     """Enables JSON storage by encoding and decoding on the fly."""
 
     impl = String
+    cache_ok = True
 
     def process_bind_param(self, value, dialect):
         if value is None:
@@ -59,8 +60,9 @@ class Unit(Base):
     external_id = Column(String, index=True)  
     unit = Column(JsonString, nullable=True)
     fixed_index = Column(Integer, index=True)
-    gold = Column(JsonString, nullable=True)
-
+    conditions = Column(JsonString, nullable=True)
+    unit_type = Column(String, index=True)
+    
     annotations = relationship("Annotation", back_populates='unit')
 
     
@@ -82,7 +84,8 @@ class JobSetUnits(Base):
     jobset_id = Column(Integer, ForeignKey("jobsets.id"), index=True)
     unit_id = Column(Integer, ForeignKey("units.id"), index=True)
     position = Column(String, default=None, index=True)
-    has_gold = Column(Boolean, default=False)
+    unit_type = Column(String, index=True)
+    has_conditions = Column(Boolean, default=False)
     
 class JobUser(Base):
     __tablename__ = 'jobusers'

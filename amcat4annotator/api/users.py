@@ -18,14 +18,17 @@ models.Base.metadata.create_all(bind=engine)
 
 app_annotator_users = APIRouter(prefix="/users", tags=["annotator users"])
 
+
 @app_annotator_users.post("/me/token", status_code=200)
 def get_my_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     """
     Get a token via password login
     """
-    user = crud_user.verify_password(db, username=form_data.username, password=form_data.password)
+    user = crud_user.verify_password(
+        db, username=form_data.username, password=form_data.password)
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Incorrect username or password")
     return {"token": get_token(user)}
 
 
@@ -55,7 +58,7 @@ def get_user_token(email: str, user: User = Depends(auth_user), db: Session = De
 @app_annotator_users.post("/{email}/password", status_code=204)
 def set_password(email: str,
                  password: str = Body(None, description="The new password"),
-                 user: User = Depends(auth_user), 
+                 user: User = Depends(auth_user),
                  db: Session = Depends(get_db)):
     """
     Set a new password. Regular users can set only their own password.
@@ -63,12 +66,13 @@ def set_password(email: str,
     """
 
     if not password:
-        raise HTTPException(status_code=400, detail={"error": "Body needs to have password"})
+        raise HTTPException(status_code=400, detail={
+                            "error": "Body needs to have password"})
 
     if not (email == 'me' or email == user.email):
         check_admin()
     crud_user.change_password(db, email, password)
-    
+
     return Response(status_code=204)
 
 
@@ -84,7 +88,7 @@ def get_users(user: User = Depends(auth_user), db: Session = Depends(get_db)):
 
 @app_annotator_users.post("", status_code=204)
 def add_users(users: list = Body(None, description="An array of dictionaries with the keys: email, password, admin", embed=True),  # notice the embed, because users is (currently) only key in body
-              user: User = Depends(auth_user), 
+              user: User = Depends(auth_user),
               db: Session = Depends(get_db)):
     """
     Create new users.
@@ -96,7 +100,8 @@ def add_users(users: list = Body(None, description="An array of dictionaries wit
         raise HTTPException(status_code=404, detail='Body needs to have users')
 
     for user in users:
-        crud_user.create_user(db, user['email'], user['password'], user['admin'])
+        crud_user.create_user(
+            db, user['email'], user['password'], user['admin'])
     return Response(status_code=204)
 
 

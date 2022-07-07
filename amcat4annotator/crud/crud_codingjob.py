@@ -1,15 +1,17 @@
 import logging
-from types import ClassMethodDescriptorType
-from typing import Optional
+from typing import Optional, Tuple
+from sqlalchemy import true
 
 from sqlalchemy.orm import Session
 
 from amcat4annotator.models import User, Unit, CodingJob, Annotation, JobUser, JobSetUnits, JobSet
+from amcat4annotator.crud.conditionals import check_conditionals, invalid_conditionals
 
 import datetime
 from typing import List, Iterable, Optional
 
 from fastapi import HTTPException
+
 
 def create_codingjob(db: Session, title: str, codebook: dict, jobsets: list, provenance: dict, rules: dict, creator: User, units: List[dict],
                      debriefing: Optional[dict] = None, authorization: Optional[dict] = None) -> int:
@@ -18,88 +20,111 @@ def create_codingjob(db: Session, title: str, codebook: dict, jobsets: list, pro
         authorization = {}
     restricted = authorization.get('restricted', False)
 
-    job = CodingJob(title=title, rules=rules, debriefing=debriefing, creator=creator, provenance=provenance, restricted=restricted)
+    job = CodingJob(title=title, rules=rules, debriefing=debriefing,
+                    creator=creator, provenance=provenance, restricted=restricted)
     db.add(job)
     db.flush()
     db.refresh(job)
 
-    units = [Unit(codingjob_id=job.id, external_id=u['id'], unit=u['unit'], unit_type=u.get('type', 'code'), conditions=u.get('conditions')) for u in units]
-    db.bulk_save_objects(units)
-    db.flush()
-
-    users = authorization.get('users', [])
-    if users:
-        set_job_coders(db, codingjob_id=job.id, emails=users)
-
+    add_units(db, job, units)
     add_jobsets(db, job, jobsets, codebook)
-    
-    # Only commits at this point, so create_codingjob can be wrapped in a try/except that rolls back changes on fail    
+    set_job_coders(db, codingjob_id=job.id,
+                   emails=authorization.get('users', []))
+
+    # Only commits at this point, so create_codingjob can be wrapped in a try/except that rolls back changes on fail
     db.commit()
     return job
 
+
+def add_units(db: Session, job: CodingJob, units: List[dict]) -> None:
+    unit_list = []
+    for u in units:
+        unit_type = u.get('type', 'code')
+        if unit_type not in ['pre', 'train', 'test', 'code', 'post']:
+            raise HTTPException(status_code=400,
+                                detail='Invalid unit type ("{unit_type}"). Has to be "code", "train", "test", or "survey"'.format(unit_type=unit_type))
+        position = u.get('position', 'job')
+        if position not in ['pre', 'post', 'job']:
+            raise HTTPException(status_code=400,
+                                detail='Invalid position ("{position}"). Has to be "pre", "job" or "post"'.format(position=position))
+        unit_list.append(Unit(
+            codingjob_id=job.id, external_id=u['id'], unit=u['unit'], unit_type=unit_type, position=position, conditionals=u.get('conditionals')))
+
+    db.bulk_save_objects(unit_list)
+    db.flush()
+
+
 def add_jobsets(db: Session, job: CodingJob, jobsets: list, codebook: dict) -> None:
-    if jobsets is None: 
+    if jobsets is None:
         jobsets = [{"name": "All"}]
     for jobset in jobsets:
         if 'name' not in jobset:
-            raise HTTPException(status_code=400, detail='Every jobset item must have a name')
-        if 'codebook' not in jobset: 
+            raise HTTPException(
+                status_code=400, detail='Every jobset item must have a name')
+        if 'codebook' not in jobset:
             if not codebook:
-                raise HTTPException(status_code=400, detail='Either codebook needs to be given, or all jobsets much have a codebook')
+                raise HTTPException(
+                    status_code=400, detail='Either codebook needs to be given, or all jobsets much have a codebook')
             jobset['codebook'] = codebook
     if len({s['name'] for s in jobsets}) < len(jobsets):
-        raise HTTPException(status_code=400, detail='jobset items must have unique names')
-    
+        raise HTTPException(
+            status_code=400, detail='jobset items must have unique names')
+
     for jobset in jobsets:
-        db_jobset = JobSet(codingjob=job, jobset=jobset['name'], codebook=jobset['codebook'])
+        print('-----------')
+        db_jobset = JobSet(
+            codingjob=job, jobset=jobset['name'], codebook=jobset['codebook'])
         db.add(db_jobset)
         db.flush()
         db.refresh(db_jobset)
 
-        def get_units(db, jobset, unit_type):
-            """
-            Units are organized in types. If a jobset doesn't have a set for a specific type,
-            use all units of this type. Types are:
-            - pre: units shown at the start of a job. Typically survey/experiment questions. Can have 'conditions' to specify required answers.
-                   For example, only allowing participants to continue if they meet a minimum age. 
-            - train: units to make a training loop, commenced just after pre. Train units can have 'conditions' to specify correct answers.
-                     Coders then see whether they answered correctly.
-            - test: units for testing whether coder is performing well. Will be mixed with the regular units. Test units should have
-                    'conditions' specifying the correct answers. Coders that don't give the right answers receive damage
-            - code: A regular unit, to be annotated
-            - post: units shown at the end of a job
-            """
-            ids_key = unit_type + '_ids'
-            if ids_key not in jobset or jobset[ids_key] is None:
-                # if no id set is specified, use all units of this type
-                units = db.query(Unit.external_id).filter(Unit.codingjob_id == job.id, Unit.unit_type == unit_type).all()
-                ids = [u.external_id for u in units]
-            else:
-                ids = jobset[ids_key]
-            for ext_id in ids:
-                unit = db.query(Unit.id, Unit.conditions).filter(Unit.codingjob_id == job.id, Unit.external_id == ext_id).first()
-                yield JobSetUnits(jobset_id=db_jobset.id, unit_id=unit.id, unit_type=unit_type, has_conditions=unit.conditions is not None)
-                ## TODO: This would be a good place for adding a check for whether gold can be optained with current codebook
-                
         unit_set = []
-        for pre_unit in get_units(db, jobset, 'pre'):
-            unit_set.append(pre_unit)
-        for unit in get_units(db, jobset, 'train'):
-            unit_set.append(unit)
-        for unit in get_units(db, jobset, 'test'):
-            unit_set.append(unit)
-        for unit in get_units(db, jobset, 'code'):
-            unit_set.append(unit)
-        for post_unit in get_units(db, jobset, 'post'):
-            unit_set.append(post_unit)
+        for position in ['pre', 'job', 'post']:
+            for unit in prepare_unit_sets(db, jobset, position, job, db_jobset):
+                unit_set.append(unit)
 
         db.bulk_save_objects(unit_set)
         db.flush()
 
 
+def prepare_unit_sets(db, jobset, position, job, db_jobset):
+    """
+    Units are organized in sets relating to positions.
+    - pre: units shown at the start of a job. Typically survey/experiment questions.
+    - job: the set of coding units. job units don't have fixed positions, but are subject to positioning based on rules. 
+    - post: units shown at the end of a job
+    """
+    ids_key = position + '_ids'
+    if ids_key not in jobset or jobset[ids_key] is None:
+        # if no id set is specified, use all units of this type
+        units = db.query(Unit.external_id).filter(
+            Unit.codingjob_id == job.id, Unit.position == position).all()
+        ids = [u.external_id for u in units]
+    else:
+        ids = jobset[ids_key]
+
+    for ext_id in ids:
+        print(ext_id)
+        unit = db.query(Unit).filter(
+            Unit.codingjob_id == job.id, Unit.external_id == ext_id).first()
+
+        # If unit has conditionals, verify that they are possible given the codebook
+        try:
+            invalid_variables = invalid_conditionals(
+                unit, jobset['codebook'])
+        except Exception as e:
+            logging.error(e)
+            invalid_variables = ['unknown problem']
+        if len(invalid_variables) > 0:
+            raise HTTPException(
+                status_code=400, detail='A unit (id = {id}) has impossible conditionals ({invalid})'.format(id=ext_id, invalid=', '.join(invalid_variables)))
+
+        yield JobSetUnits(jobset_id=db_jobset.id, unit_id=unit.id, position=position, has_conditionals=unit.conditionals is not None)
+
+
 def get_job_coders(db, codingjob_id: int) -> Iterable[str]:
-    return db.query(User).outerjoin(JobUser).filter(JobUser.codingjob_id == codingjob_id, JobUser.can_code==True)    
-    
+    return db.query(User).outerjoin(JobUser).filter(JobUser.codingjob_id == codingjob_id, JobUser.can_code == True)
+
 
 def set_job_coders(db: Session, codingjob_id: int, emails: Iterable[str], only_add: bool = False) -> Iterable[str]:
     """
@@ -107,6 +132,8 @@ def set_job_coders(db: Session, codingjob_id: int, emails: Iterable[str], only_a
     If only_add is True, the provided list of emails is only added, and current users that are not in this list are kept.
     Returns an array with all users.
     """
+    if len(emails) == 0:
+        return []
     emails = set(emails)
     existing_jobusers = get_job_coders(db, codingjob_id)
     existing_emails = set([ju.email for ju in existing_jobusers])
@@ -121,12 +148,14 @@ def set_job_coders(db: Session, codingjob_id: int, emails: Iterable[str], only_a
             db.commit()
             db.refresh(user)
 
-        jobuser = db.query(JobUser).filter(JobUser.user_id == user.id, JobUser.codingjob_id == codingjob_id).first()
+        jobuser = db.query(JobUser).filter(
+            JobUser.user_id == user.id, JobUser.codingjob_id == codingjob_id).first()
         if jobuser is None:
-            jobuser = JobUser(user_id=user.id, codingjob_id=codingjob_id, can_code=True, can_edit=False)
+            jobuser = JobUser(
+                user_id=user.id, codingjob_id=codingjob_id, can_code=True, can_edit=False)
             db.add(jobuser)
         else:
-            jobuser.can_code=True
+            jobuser.can_code = True
         db.commit()
         db.refresh(jobuser)
 
@@ -136,7 +165,8 @@ def set_job_coders(db: Session, codingjob_id: int, emails: Iterable[str], only_a
         rm_emails = existing_emails - emails
         for rm_email in rm_emails:
             user = db.query(User).filter(User.email == rm_email).first()
-            jobuser = db.query(JobUser).filter(JobUser.user_id == user.id, JobUser.codingjob_id == codingjob_id).first()
+            jobuser = db.query(JobUser).filter(
+                JobUser.user_id == user.id, JobUser.codingjob_id == codingjob_id).first()
             if jobuser is not None:
                 jobuser.can_code = False
         db.commit()
@@ -153,121 +183,89 @@ def get_jobs(db: Session) -> list:
     Retrieve all jobs. Only basic meta data. 
     """
     jobs = db.query(CodingJob).all()
-    data = [dict(id=job.id, title=job.title, created=job.created, archived=job.archived, creator=job.creator.email) for job in jobs]
+    data = [dict(id=job.id, title=job.title, created=job.created,
+                 archived=job.archived, creator=job.creator.email) for job in jobs]
     data.sort(key=lambda x: x.get('created'), reverse=True)
     return data
 
-def get_annotations(db: Session, job_id: int): 
-    ann_unit_coder = db.query(Annotation, Unit, User, JobSet).join(Unit).join(User).join(JobSet).filter(Unit.codingjob_id == job_id).all()
+
+def get_annotations(db: Session, job_id: int):
+    ann_unit_coder = db.query(Annotation, Unit, User, JobSet).join(Unit).join(
+        User).join(JobSet).filter(Unit.codingjob_id == job_id).all()
     for annotation, unit, user, jobset in ann_unit_coder:
-        yield {"jobset": jobset.jobset, "unit_id": unit.external_id, "coder": user.email, "annotation": annotation.annotation, "status": annotation.status}   
-    
+        yield {"jobset": jobset.jobset, "unit_id": unit.external_id, "coder": user.email, "annotation": annotation.annotation, "status": annotation.status}
+
 
 def get_unit_annotations(db: Session, unit_id: int, coder_id: int):
     return db.query(Annotation).filter(Annotation.unit_id == unit_id, Annotation.coder_id == coder_id).first()
 
 
-def set_annotation(db: Session, unit: Unit, coder: User, annotation: list, status: str) -> Annotation:
+def set_annotation(db: Session, unit: Unit, coder: User, annotation: list, status: str) -> list:
     """Create a new annotation or replace an existing annotation"""
-    jobuser = db.query(JobUser).filter(JobUser.codingjob_id == unit.codingjob_id, JobUser.user_id == coder.id).first()
-    
-    ann = db.query(Annotation).filter(Annotation.unit_id == unit.id, Annotation.coder_id == coder.id).first()
-    if ann is None:        
-        ann = Annotation(unit_id=unit.id, coder_id=coder.id, annotation=annotation, jobset_id=jobuser.jobset_id, status=status)
+    if status not in ['DONE', 'IN_PROGRESS']:
+        raise HTTPException(status_code=400, detail={
+                            "error": "Status has to be 'DONE' or 'IN_PROGRESS'"})
+
+    jobuser = db.query(JobUser).filter(JobUser.codingjob_id ==
+                                       unit.codingjob_id, JobUser.user_id == coder.id).first()
+
+    ann = db.query(Annotation).filter(Annotation.unit_id ==
+                                      unit.id, Annotation.coder_id == coder.id).first()
+
+    damage, report = check_conditionals(unit, annotation, status)
+    for variable, action in report.items():
+        print(action)
+        ca = action.get('action', None)
+        if ca in ['retry', 'block']:
+            status = 'IN_PROGRESS'
+        if ca == 'block':
+            # here block entire job
+            None
+
+    if ann is None:
+        n_coded = db.query(Annotation).filter(
+            Annotation.jobset_id == jobuser.jobset_id, Annotation.coder_id == coder.id).count()
+        ann = Annotation(unit_id=unit.id, coder_id=coder.id, annotation=annotation, jobset_id=jobuser.jobset_id,
+                         status=status, damage=damage, unit_index=n_coded)
         db.add(ann)
     else:
-        if ann.status == 'DONE': 
-            status = 'DONE' ## cannot undo DONE
+        if ann.status == 'DONE':
+            status = 'DONE'  # cannot undo DONE
         ann.annotation = annotation
         ann.status = status
         ann.modified = datetime.datetime.now()
+        ann.damage = damage
     db.commit()
-    return ann
-
-
-def check_gold(unit: Unit, annotation: Annotation):
-    """
-    If unit has a gold standard, see if annotations match it.
-    This can have two consequences:
-    - The coder can take damage for getting it wrong.
-    - The coder can receive gold_feedback. The unit will then be marked 
-      as IN_PROGRESS, and the coder can't continue before the right answer is given   
-    """
-    if unit.gold is None:
-        return []
-    gold_feedback = []
-    damage = 0
-    for g in unit.gold['matches']:
-        ## only check gold matches for variables that have been coded
-        ## (if unit is done, all variables are assumed to have been coded)
-        variable_coded = unit.status == "DONE"
-        found_match = False
-        for a in annotation.annotation:
-            if g['variable'] != a['variable']: continue
-            variable_coded = True
-            if g['field'] is not None: 
-                if g['field'] != a['field']: continue;
-            if g['offset'] is not None:
-                if g['offset'] != a['offset']: continue;
-            if g['length'] is not None:
-                if g['length'] != a['length']: continue;
-
-            op = g['operator'] if 'operator' in g else '=='
-            if op == "==" and a['value'] == g['value']: found_match = True
-            if op == "<=" and a['value'] <= g['value']: found_match = True
-            if op == "<" and a['value'] < g['value']: found_match = True
-            if op == ">=" and a['value'] >= g['value']: found_match = True
-            if op == ">" and a['value'] > g['value']: found_match = True
-            if op == "!=" and a['value'] != g['value']: found_match = True
-            if found_match: continue
-        if found_match: continue
-        if not variable_coded: continue
-
-        if 'damage' in g: damage += g['damage']
-        if unit.gold['if_wrong'] == 'retry':
-            feedback = {"variable": g['variable']}
-            if (g['message']): feedback['message'] = g['message']
-            gold_feedback.push(feedback)
-
-    if 'redemption' not in unit.gold or unit.gold['redemption']:
-        unit.damage = damage
-    else:
-        unit.damage = max(damage, unit.damage)
-
-    if len(gold_feedback) > 0:
-        unit.status = "IN_PROGRESS"
-    
-    return gold_feedback
-    
+    return report
 
 
 def get_jobset(db: Session, job_id: int, user_id: int, assign_set: bool) -> JobUser:
-    jobuser = db.query(JobUser).filter(JobUser.codingjob_id == job_id, JobUser.user_id == user_id).first()
+    jobuser = db.query(JobUser).filter(JobUser.codingjob_id ==
+                                       job_id, JobUser.user_id == user_id).first()
 
     if jobuser is not None:
         if jobuser.jobset_id is not None:
-            ## if there is a jobuser with a jobset assigned, we're good.
+            # if there is a jobuser with a jobset assigned, we're good.
             return db.query(JobSet).filter(JobSet.codingjob_id == job_id, JobSet.id == jobuser.jobset_id).first()
-            
-    
+
     jobsets = db.query(JobSet).filter(JobSet.codingjob_id == job_id)
     n_jobsets = jobsets.count()
     if n_jobsets == 1:
         jobset = jobsets[0]
     else:
-        ## better to look for the jobset with least coders!!
-        current_users = db.query(JobUser).filter(JobUser.codingjob_id == job_id).count()
+        # better to look for the jobset with least coders!!
+        current_users = db.query(JobUser).filter(
+            JobUser.codingjob_id == job_id).count()
         next_jobset_index = current_users % n_jobsets
         jobset = jobsets[next_jobset_index]
 
-    if assign_set: 
+    if assign_set:
         if jobuser is None:
-            jobuser = JobUser(user_id=user_id, codingjob_id=job_id, jobset_id=jobset.id)
+            jobuser = JobUser(
+                user_id=user_id, codingjob_id=job_id, jobset_id=jobset.id)
             db.add(jobuser)
         else:
             jobuser.jobset_id = jobset.id
         db.commit()
 
     return jobset
-
-    

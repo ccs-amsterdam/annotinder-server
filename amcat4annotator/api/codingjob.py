@@ -16,7 +16,8 @@ from amcat4annotator.database import engine, get_db
 from amcat4annotator.auth import auth_user, check_admin, get_jobtoken, check_job_user
 from amcat4annotator.models import Unit, User, JobSetUnits
 
-app_annotator_codingjob = APIRouter(prefix='/codingjob', tags=["annotator codingjob"])
+app_annotator_codingjob = APIRouter(
+    prefix='/codingjob', tags=["annotator codingjob"])
 
 
 @app_annotator_codingjob.post("", status_code=201)
@@ -24,11 +25,15 @@ def create_job(title: str = Body(None, description='The title of the codingjob')
                codebook: dict = Body(None, description='The codebook'),
                units: list = Body(None, description='The units'),
                rules: dict = Body(None, description='The rules'),
-               debriefing: dict = Body(None, description='Debriefing information'),
-               jobsets: list = Body(None, description='A list of codingjob jobsets. An array of objects, with keys: name, codebook, unit_set'),
-               authorization: dict = Body(None, description='A dictionnary containing authorization settings'),
-               provenance: dict = Body(None, description='A dictionary containing any information about the units'),
-               user: User = Depends(auth_user), 
+               debriefing: dict = Body(
+                   None, description='Debriefing information'),
+               jobsets: list = Body(
+                   None, description='A list of codingjob jobsets. An array of objects, with keys: name, codebook, unit_set'),
+               authorization: dict = Body(
+                   None, description='A dictionnary containing authorization settings'),
+               provenance: dict = Body(
+                   None, description='A dictionary containing any information about the units'),
+               user: User = Depends(auth_user),
                db: Session = Depends(get_db)):
     """
     Create a new codingjob. Body should be json structured as follows:
@@ -39,7 +44,7 @@ def create_job(title: str = Body(None, description='The title of the codingjob')
       "units": [
         {"id": <string>         # An id string. Needs to be unique within a codingjob (not necessarily across codingjobs)
          "unit": {.. blob ..},
-         "gold": {.. blob ..},  # optional, include correct answer here for gold questions
+         "conditionals": {.. blob ..},  # optional, include answering conditions
         }
         ..
       ],
@@ -75,14 +80,15 @@ def create_job(title: str = Body(None, description='The title of the codingjob')
     """
     check_admin(user)
     if not title or not codebook or not units or not rules:
-        raise HTTPException(status_code=400, detail='Codingjob is missing keys')
+        raise HTTPException(
+            status_code=400, detail='Codingjob is missing keys')
 
     try:
-        job = crud_codingjob.create_codingjob(db, title=title, codebook=codebook, jobsets=jobsets, provenance=provenance, rules=rules, debriefing=debriefing, creator=user, units=units, authorization=authorization)
+        job = crud_codingjob.create_codingjob(db, title=title, codebook=codebook, jobsets=jobsets, provenance=provenance,
+                                              rules=rules, debriefing=debriefing, creator=user, units=units, authorization=authorization)
     except Exception as e:
         db.rollback()
-        logging.error(e)
-        raise HTTPException(status_code=400, detail='Could not create codingjob')
+        raise e
 
     return dict(id=job.id)
 
@@ -90,8 +96,10 @@ def create_job(title: str = Body(None, description='The title of the codingjob')
 @app_annotator_codingjob.post("/{job_id}/settings", status_code=201)
 def set_job_settings(job_id: int,
                      user: User = Depends(auth_user),
-                     restricted: Optional[bool] = Body(None, description="set whether job should be restricted to authorized users"),
-                     archived: Optional[bool] = Body(None, description="set whether job should be archived"), 
+                     restricted: Optional[bool] = Body(
+                         None, description="set whether job should be restricted to authorized users"),
+                     archived: Optional[bool] = Body(
+                         None, description="set whether job should be archived"),
                      db: Session = Depends(get_db)):
     """
     Set job settings, and receive an object with all job settings.
@@ -112,8 +120,10 @@ def set_job_settings(job_id: int,
 @app_annotator_codingjob.post("/{job_id}/users", status_code=204)
 def set_job_users(job_id: int,
                   user: User = Depends(auth_user),
-                  users: list = Body(None, description="An array of user emails"),
-                  only_add: bool = Body(None, description="If True, only add the provided list of users, without removing existing users"), 
+                  users: list = Body(
+                      None, description="An array of user emails"),
+                  only_add: bool = Body(
+                      None, description="If True, only add the provided list of users, without removing existing users"),
                   db: Session = Depends(get_db)):
     """
     Sets the users that can code the codingjob (if the codingjob is restricted).
@@ -121,14 +131,16 @@ def set_job_users(job_id: int,
     Returns an array with all users.
     """
     check_admin(user)
-    crud_codingjob.set_job_coders(db, codingjob_id=job_id, emails=users, only_add=only_add)
+    crud_codingjob.set_job_coders(
+        db, codingjob_id=job_id, emails=users, only_add=only_add)
     return Response(status_code=204)
 
 
 @app_annotator_codingjob.get("/{job_id}")
 def get_job(job_id: int,
-            annotations: bool = Query(None, description="Boolean for whether or not to include annotations"),
-            user: User = Depends(auth_user), 
+            annotations: bool = Query(
+                None, description="Boolean for whether or not to include annotations"),
+            user: User = Depends(auth_user),
             db: Session = Depends(get_db)):
     """
     Return a single coding job definition
@@ -136,7 +148,7 @@ def get_job(job_id: int,
     check_admin(user)
     job = _job(db, job_id)
     units = crud_codingjob.get_units(db, job_id)
-   
+
     cj = {
         "id": job_id,
         "title": job.title,
@@ -146,8 +158,9 @@ def get_job(job_id: int,
         "units": [u for u in units],
     }
     if annotations:
-        cj['annotations'] = [a for a in crud_codingjob.get_annotations(db, job_id)]
-    
+        cj['annotations'] = [
+            a for a in crud_codingjob.get_annotations(db, job_id)]
+
     return cj
 
 
@@ -164,7 +177,8 @@ def get_job_details(job_id: int, user: User = Depends(auth_user), db: Session = 
     js_details = []
     for js in job.jobsets:
         name = js.jobset
-        n_units = db.query(JobSetUnits).filter(JobSetUnits.jobset_id == js.id).count()
+        n_units = db.query(JobSetUnits).filter(
+            JobSetUnits.jobset_id == js.id).count()
         js_details.append({"name": name, "n_units": n_units})
 
     data = {
@@ -199,10 +213,10 @@ def get_job_token(job_id: int, user: User = Depends(auth_user), db: Session = De
     Create a 'job token' for this job
     This allows anyone to code units on this job
     """
-    ## shouldn't have to be admin to get token, because we want people to be able to share job tokens 
-    ## But this should only be possible
-    ## for jobs that allow anonymous coders (and that should be something only admin/owner can set)
-    ## check_admin(user)
+    # shouldn't have to be admin to get token, because we want people to be able to share job tokens
+    # But this should only be possible
+    # for jobs that allow anonymous coders (and that should be something only admin/owner can set)
+    # check_admin(user)
     job = _job(db, job_id)
     token = get_jobtoken(job)
     return dict(token=token)
@@ -220,7 +234,7 @@ def get_codebook(job_id: int, user: User = Depends(auth_user), db: Session = Dep
 
 
 @app_annotator_codingjob.get("/{job_id}/progress")
-def progress(job_id, user: User = Depends(auth_user), db: Session = Depends(get_db)):
+def get_progress(job_id, user: User = Depends(auth_user), db: Session = Depends(get_db)):
     """
     Get a user's progress on a specific job.
     """
@@ -232,7 +246,8 @@ def progress(job_id, user: User = Depends(auth_user), db: Session = Depends(get_
 
 @app_annotator_codingjob.get("/{job_id}/unit")
 def get_unit(job_id,
-             index: int = Query(None, description="The index of unit set for a particular user"),
+             index: int = Query(
+                 None, description="The index of unit set for a particular user"),
              user: User = Depends(auth_user), db: Session = Depends(get_db)):
     """
     Retrieve a single unit to be coded.
@@ -252,19 +267,19 @@ def get_unit(job_id,
     if a:
         result['annotation'] = a.annotation
         result['status'] = a.status
-        result['gold_feedback'] = crud_codingjob.check_gold(u, a)
 
     return result
 
 
-@app_annotator_codingjob.post("/{job_id}/unit/{unit_id}/annotation", status_code=204)
+@app_annotator_codingjob.post("/{job_id}/unit/{unit_id}/annotation", status_code=200)
 def post_annotation(job_id: int,
                     unit_id: int,
                     user: User = Depends(auth_user),
-                    annotation: list = Body(None, description="An array of dictionary annotations"),
-                    status: str = Body(None, description='The status of the annotation'), 
+                    annotation: list = Body(
+                        None, description="An array of dictionary annotations"),
+                    status: str = Body(
+                        None, description='The status of the annotation'),
                     db: Session = Depends(get_db)):
-                    
     """
     Set the annotations for a specific unit
     POST body should consist of a json object:
@@ -282,8 +297,9 @@ def post_annotation(job_id: int,
         raise HTTPException(status_code=400)
     if not annotation:
         raise HTTPException(status_code=400)
-    crud_codingjob.set_annotation(db, unit=unit, coder=user, annotation=annotation, status=status)
-    return Response(status_code=204)
+    report = crud_codingjob.set_annotation(
+        db, unit=unit, coder=user, annotation=annotation, status=status)
+    return report
 
 
 @app_annotator_codingjob.get("")
@@ -295,9 +311,10 @@ def get_all_jobs(user: User = Depends(auth_user), db: Session = Depends(get_db))
     jobs = crud_codingjob.get_jobs(db)
     return {"jobs": jobs}
 
+
 @app_annotator_codingjob.get("/{job_id}/debriefing")
 def get_debriefing(job_id: int,
-                   user: User = Depends(auth_user), 
+                   user: User = Depends(auth_user),
                    db: Session = Depends(get_db)):
     """
     Get a list of all codingjobs
@@ -306,15 +323,14 @@ def get_debriefing(job_id: int,
     check_job_user(db, user, job)
     progress = rules.get_progress_report(db, job, user)
     if progress['n_coded'] != progress['n_total']:
-      raise HTTPException(status_code=404, detail='Can only get debrief information once job is completed')
-    
+        raise HTTPException(
+            status_code=404, detail='Can only get debrief information once job is completed')
+
     if job.debriefing is None:
-      return None
-      
+        return None
+
     job.debriefing['user_id'] = re.sub('jobuser_[0-9]+_', '', user.email)
     return job.debriefing
-
-
 
 
 # TODO

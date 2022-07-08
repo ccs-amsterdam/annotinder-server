@@ -1,10 +1,11 @@
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from amcat4annotator.models import Unit, User, Annotation, CodingJob, JobSetUnits, JobSet
 from amcat4annotator.crud import crud_codingjob
+from amcat4annotator.utils import random_indices
 
 
 class ValidationError(Exception):
@@ -45,8 +46,8 @@ class RuleSet:
         #     self.db, job.id, coder.id, False)
 
         return dict(
-            n_coded=self.coded(job, coder).count(),
             n_total=self.n_total(job, coder),
+            n_coded=self.coded(job, coder).count(),
             seek_backwards=self.can_seek_backwards,
             seek_forwards=self.can_seek_forwards,
         )
@@ -55,7 +56,8 @@ class RuleSet:
         """
         Get a specific unit by index. Note that this index is specific for a CodingJob X User. 
         The first item in a CodingJob or user 1 is not necesarily the same as for user 2.  
-        Returns None if index could not be found
+        Returns two values. First is the Unit, which can be None if missing. Second is the unit index,
+        because in some cases the input index can be overruled
         """
         raise NotImplementedError()
 
@@ -67,20 +69,20 @@ class RuleSet:
         """
         raise NotImplementedError()
 
-    def get_unit_in_progress(self, job: CodingJob, coder: User):
+    def get_unit_with_status(self, job: CodingJob, coder: User, statuses: List[str]):
         """
-        Get the first unit currently in progress.
-        Return None if none in progress.
+        get first unit with a particular status
         """
-        in_progress = self.db.query(Annotation.unit_id, Annotation.unit_index).join(JobSet).filter(
-            JobSet.codingjob_id == job.id, Annotation.coder_id == coder.id, Annotation.status == 'IN_PROGRESS').first()
-        if in_progress:
-            return self.db.query(Unit).filter(Unit.id == in_progress.unit_id).first(), in_progress.unit_index
+        ann = self.db.query(Annotation.unit_id, Annotation.unit_index).join(JobSet).filter(
+            JobSet.codingjob_id == job.id, Annotation.coder_id == coder.id, Annotation.status.in_(statuses)).first()
+        if ann:
+            return self.db.query(Unit).filter(Unit.id == ann.unit_id).first(), ann.unit_index
         return None, None
 
-    def get_coded_unit(self, job: CodingJob, coder: User, index: int):
+    def get_started_unit(self, job: CodingJob, coder: User, index: int):
         """
-        Get a unit that has already been coded (or is in progress) by its index
+        Get a unit that has already been started by its index. 
+        Can only get units before the current unit if can_seek_backwards is True.
         """
         ann = self.db.query(Annotation.unit_id, Annotation.unit_index).join(JobSet).filter(
             JobSet.codingjob_id == job.id, Annotation.coder_id == coder.id, Annotation.unit_index == index).first()
@@ -120,7 +122,7 @@ class RuleSet:
 
     def started(self, job: CodingJob, coder: User):
         """
-        Get units that a user has already started in given job. Like self.coded, but including in_progress
+        Get units that a user has already started in given job. 
         """
         return self.db.query(Annotation).join(JobSet).filter(JobSet.codingjob_id == job.id, Annotation.coder_id == coder.id)
 
@@ -139,10 +141,11 @@ class FixedSet(RuleSet):
     """
 
     def get_next_unit(self, job: CodingJob, coder: User) -> Tuple[Optional[Unit], int]:
-        # (1) Is there a unit currently IN_PROGRESS?
-        in_progress, unit_index = self.get_unit_in_progress(job, coder)
-        if in_progress:
-            return in_progress, unit_index
+        # (1) Is there a unit currently IN_PROGRESS or RETRY?
+        unit, unit_index = self.get_unit_with_status(
+            job, coder, ['IN_PROGRESS', 'RETRY'])
+        if unit:
+            return unit, unit_index
 
         # (2) Is there a fixed index unit?
 
@@ -151,16 +154,20 @@ class FixedSet(RuleSet):
         return self.get_unit(job, coder, unit_index), unit_index
 
     def seek_unit(self, job: CodingJob, coder: User, index: int) -> Optional[Unit]:
-        # (1) try if index is an already started unit (taking can_seek_backwards into account)
-        unit = self.get_coded_unit(job, coder, index)
+        # (1) If index is invalid, use get_next_unit
+        if index < 0 or (index >= self.coded(job, coder).count() and not self.can_seek_forwards):
+            return self.get_next_unit(job, coder)
+
+        # (2) try if index is an already started unit (taking can_seek_backwards into account)
+        unit = self.get_started_unit(job, coder, index)
         if unit is not None:
-            return unit
+            return unit, index
 
-        # (2) the only other option is seeking forward
+        # (3) the only other option is seeking forward
         if not self.can_seek_forwards:
-            return None
+            return None, index
 
-        return self.get_unit(job, coder, index)
+        return self.get_unit(job, coder, index), index
 
     def n_total(self, job: CodingJob, coder: User):
         # If sets are specified, n is set length. Otherwise n is total number of units
@@ -174,13 +181,13 @@ class FixedSet(RuleSet):
 
     def get_unit(self, job: CodingJob, coder: User, index: int):
         units = self.units(job, coder)
-        # Here randomize based on rule setting
-        # if 'randomize' in self.rules:
-        #    units = units.order_by(func.random())
-        # apparently sqllite doesn't allow seeds... so need another solution
-        if index >= 0 and index < units.count():
-            return units[index]
-        return None
+        if index < 0 or index >= units.count():
+            return None
+        if 'randomize' in self.rules:
+            # randomize using coder id as seed, so that each coder has a unique and fixed order
+            random_mapping = random_indices(coder.id, units.count())
+            index = random_mapping[index]
+        return units[index]
 
 
 class CrowdCoding(RuleSet):
@@ -189,10 +196,11 @@ class CrowdCoding(RuleSet):
     """
 
     def get_next_unit(self, job: CodingJob, coder: User) -> Tuple[Optional[Unit], int]:
-        # (1) Is there a unit currently IN_PROGRESS?
-        in_progress, unit_index = self.get_unit_in_progress(job, coder)
-        if in_progress:
-            return in_progress, unit_index
+        # (1) Is there a unit currently IN_PROGRESS or RETRY?
+        unit, unit_index = self.get_unit_with_status(
+            job, coder, ['IN_PROGRESS', 'RETRY'])
+        if unit:
+            return unit, unit_index
 
         unit_index = self.started(job, coder).count()
 
@@ -232,10 +240,18 @@ class CrowdCoding(RuleSet):
         return None, unit_index
 
     def seek_unit(self, job: CodingJob, coder: User, index: int) -> Optional[Unit]:
-        if index < 0 or index >= self.n_total(job, coder):
-            return None
+        # (1) If index is invalid, use get_next_unit
+        if index < 0 or (index >= self.coded(job, coder).count()):
+            return self.get_next_unit(job, coder)
 
-        self.get_coded_unit(job, coder, index)
+        # (2) if index is higher than total number of units, return None and index.
+        #     in the client this should direct to the finished page
+        if index >= self.n_total(job, coder):
+            return None, index
+
+        # (2) Get unit by index. For crowd coding this can only be units that already started
+        #     (seek forward is impossible because the next unit is determined by the crowd)
+        self.get_started_unit(job, coder, index), index
 
     def n_total(self, job: CodingJob, coder: User):
         """

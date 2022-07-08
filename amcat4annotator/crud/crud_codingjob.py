@@ -104,7 +104,6 @@ def prepare_unit_sets(db, jobset, position, job, db_jobset):
         ids = jobset[ids_key]
 
     for ext_id in ids:
-        print(ext_id)
         unit = db.query(Unit).filter(
             Unit.codingjob_id == job.id, Unit.external_id == ext_id).first()
 
@@ -212,12 +211,14 @@ def set_annotation(db: Session, unit: Unit, coder: User, annotation: list, statu
     ann = db.query(Annotation).filter(Annotation.unit_id ==
                                       unit.id, Annotation.coder_id == coder.id).first()
 
-    damage, report = check_conditionals(unit, annotation, status)
-    for variable, action in report.items():
-        print(action)
+    damage, report = check_conditionals(unit, annotation)
+
+    # force a status based on conditionals results. Also, store certain reports actions
+    # in the annotation. These actions are then
+    for action in report.values():
         ca = action.get('action', None)
         if ca in ['retry', 'block']:
-            status = 'IN_PROGRESS'
+            status = 'RETRY'
         if ca == 'block':
             # here block entire job
             None
@@ -229,8 +230,6 @@ def set_annotation(db: Session, unit: Unit, coder: User, annotation: list, statu
                          status=status, damage=damage, unit_index=n_coded)
         db.add(ann)
     else:
-        if ann.status == 'DONE':
-            status = 'DONE'  # cannot undo DONE
         ann.annotation = annotation
         ann.status = status
         ann.modified = datetime.datetime.now()

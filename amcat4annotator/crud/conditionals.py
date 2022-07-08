@@ -20,7 +20,7 @@ def default_conditionals(type: str) -> Tuple[str, str, str, float]:
     return successAction, failAction, message, damage
 
 
-def check_conditionals(unit: Unit, annotation: dict, status: str) -> Tuple[float, dict]:
+def check_conditionals(unit: Unit, annotation: dict, report_success=True) -> Tuple[float, dict]:
     """
     If unit has conditions, see if annotations satisfy them.
     This can various consequences:
@@ -38,11 +38,9 @@ def check_conditionals(unit: Unit, annotation: dict, status: str) -> Tuple[float
 
     for conditional in unit.conditionals:
         if conditional['variable'] not in report:
-            report[conditional['variable']] = {
-                "action": conditional.get('onSuccess', defaultSuccessAction),
-                "message": conditional.get('message', defaultMessage)}
+            report[conditional['variable']] = {}
 
-        variable_coded = status == "DONE"
+        variable_coded = False
         success = True
         submessages = []
 
@@ -100,8 +98,10 @@ def check_conditionals(unit: Unit, annotation: dict, status: str) -> Tuple[float
             success = False
 
         if success:
-            report[conditional['variable']]['action'] = conditional.get(
-                'onSuccess', defaultSuccessAction)
+            if report_success:
+                print('what')
+                report[conditional['variable']]['action'] = conditional.get(
+                    'onSuccess', defaultSuccessAction)
         else:
             report[conditional['variable']]['action'] = conditional.get(
                 'onFail', defaultFailAction)
@@ -116,6 +116,9 @@ def check_conditionals(unit: Unit, annotation: dict, status: str) -> Tuple[float
 
 
 def invalid_conditionals(unit: Unit, codebook: dict) -> List:
+    """
+    Check conditionals, and return an array of variable names for which the conditional failed
+    """
     invalid_variables = []
 
     if unit.conditionals is None:
@@ -139,6 +142,9 @@ def invalid_conditionals(unit: Unit, codebook: dict) -> List:
 
 
 def valid_questions_conditionals(variable, conditions, questions):
+    """
+    Check conditionals for 'questions' type codebook
+    """
     for question in questions:
         code_values = get_code_values(question.get('codes', []))
         if variable == question['name']:
@@ -157,6 +163,9 @@ def valid_questions_conditionals(variable, conditions, questions):
 
 
 def valid_annotate_conditionals(variable, conditions, variables):
+    """
+    Check conditionals for 'annotation' type codebook
+    """
     for v in variables:
         code_values = get_code_values(question.get('codes', []))
         if variable == v['name']:
@@ -217,6 +226,10 @@ def value_is_possible(conditions, values):
 
 
 def position_is_possible(conditions, unit):
+    """
+    If a condition contains a position (field, offset and length), check
+    if this position is even possible given the unit text
+    """
     for condition in conditions:
         if not all(k in condition for k in ['field', 'offset', 'length']):
             continue
@@ -240,6 +253,9 @@ def position_is_possible(conditions, unit):
 
 
 def get_condition_value(condition: dict) -> str | float:
+    """
+    standardize the condition value to either str or float
+    """
     value = condition.get('value')
     if isinstance(value, int) or isinstance(value, float):
         return float(value)

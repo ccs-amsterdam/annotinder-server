@@ -15,6 +15,7 @@ from amcat4annotator.crud import crud_codingjob
 from amcat4annotator.database import engine, get_db
 from amcat4annotator.auth import auth_user, check_admin, get_jobtoken, check_job_user
 from amcat4annotator.models import Unit, User, JobSetUnits
+from amcat4annotator.crud.conditionals import check_conditionals
 
 app_annotator_codingjob = APIRouter(
     prefix='/codingjob', tags=["annotator codingjob"])
@@ -257,16 +258,26 @@ def get_unit(job_id,
     check_job_user(db, user, job)
     if index is not None:
         index = int(index)
-        u = rules.seek_unit(db, job, user, index=index)
+        u, index = rules.seek_unit(db, job, user, index=index)
     else:
         u, index = rules.get_next_unit(db, job, user)
     if u is None:
-        raise HTTPException(status_code=404)
+        if index is None:
+            raise HTTPException(status_code=404)
+        else:
+            return {'index': index}
+
     result = {'id': u.id, 'unit': u.unit, 'index': index}
     a = crud_codingjob.get_unit_annotations(db, u.id, user.id)
     if a:
         result['annotation'] = a.annotation
         result['status'] = a.status
+
+        # check conditionals and return failures so that coders immediately see the
+        # feedback when opening the unit
+        damage, report = check_conditionals(
+            u, a.annotation, report_success=False)
+        result['report'] = report
 
     return result
 
@@ -285,7 +296,7 @@ def post_annotation(job_id: int,
     POST body should consist of a json object:
     {
       "annotation": [{..blob..}],
-      "status": "DONE"|"IN_PROGRESS"|"SKIPPED"  # optional
+      "status": "DONE"|"IN_PROGRESS"|"SKIPPED"|"RETRY"  # optional
     }
     """
     unit = db.query(Unit).filter(Unit.id == unit_id).first()

@@ -84,7 +84,7 @@ class JobSetUnits(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     jobset_id = Column(Integer, ForeignKey("jobsets.id"), index=True)
     unit_id = Column(Integer, ForeignKey("units.id"), index=True)
-    position = Column(String, default=None, index=True)
+    fixed_index = Column(Integer, default=None, index=True)
     unit_type = Column(String, index=True)
     has_conditionals = Column(Boolean, default=False)
 

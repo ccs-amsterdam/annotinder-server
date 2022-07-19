@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 
 from amcat4annotator.models import User, CodingJob, Annotation, JobUser, Unit
 from amcat4annotator import auth
-from amcat4annotator import rules
+from amcat4annotator import unitserver
+from amcat4annotator.crud import crud_codingjob
 #from amcat4annotator import schemas
 
 
@@ -56,12 +57,18 @@ def change_password(db: Session, email: str, password: str):
         db.commit()
 
 
-def get_users(db: Session) -> list:
+def get_users(db: Session, offset: int, n: int) -> list:
     """
     Retrieve list of users (admin only)
     """
-    users = db.query(User).all()
-    return [{"id": u.id, "is_admin": u.is_admin, "email": u.email} for u in users]
+    users = db.query(User).offset(offset)
+    total = users.count()
+    if offset is not None: users.offset(offset)
+    if n is not None: users.limit(n)
+    return {
+        "users": [{"id": u.id, "is_admin": u.is_admin, "email": u.email} for u in users.all()],
+        "total": total
+    }
 
 
 def get_user_jobs(db: Session, user: User):
@@ -85,18 +92,15 @@ def get_user_jobs(db: Session, user: User):
         data = {"id": job.id, "title": job.title, "created": job.created,
                 "creator": job.creator.email, "archived": job.archived}
 
-        progress_report = rules.get_progress_report(db, job, user)
-        data["n_total"] = progress_report['n_total']
-        data["n_coded"] = progress_report['n_coded']
-
-        ##annotations = db.query(Annotation).join(Unit).filter(Unit.codingjob_id == job.id, Annotation.coder_id == user.id, Annotation.status != 'IN_PROGRES').all()
-        last_modified = db.query(
-            Annotation.modified, func.max(Annotation.modified)).first()
-        data["modified"] = last_modified[0] or 'NEW'
-
+        jobuser = db.query(JobUser).filter(JobUser.codingjob_id == job.id, JobUser.user_id == user.id).first()
+        if jobuser is not None:
+            progress_report = unitserver.get_progress_report(db, job, user)
+            data["n_total"] = progress_report['n_total']
+            data["n_coded"] = progress_report['n_coded']
+            data["modified"] = progress_report['last_modified']
         jobs_with_progress.append(data)
 
     jobs_with_progress.sort(key=lambda x: x.get('created') if x.get(
-        'modified') == 'NEW' else x.get('modified'), reverse=True)
+        'modified') == None else x.get('modified'), reverse=True)
 
     return jobs_with_progress

@@ -7,7 +7,7 @@ from fastapi.params import Query, Body, Depends
 
 
 from amcat4annotator.api.common import _job, _jobset
-from amcat4annotator import rules
+from amcat4annotator import unitserver
 
 from sqlalchemy.orm import Session
 
@@ -241,7 +241,7 @@ def get_progress(job_id, user: User = Depends(auth_user), db: Session = Depends(
     """
     job = _job(db, job_id)
     check_job_user(db, user, job)
-    progress = rules.get_progress_report(db, job, user)
+    progress = unitserver.get_progress_report(db, job, user)
     return progress
 
 
@@ -258,9 +258,9 @@ def get_unit(job_id,
     check_job_user(db, user, job)
     if index is not None:
         index = int(index)
-        u, index = rules.seek_unit(db, job, user, index=index)
+        u, index = unitserver.seek_unit(db, job, user, index=index)
     else:
-        u, index = rules.get_next_unit(db, job, user)
+        u, index = unitserver.get_next_unit(db, job, user)
     if u is None:
         if index is None:
             raise HTTPException(status_code=404)
@@ -332,7 +332,7 @@ def get_debriefing(job_id: int,
     """
     job = _job(db, job_id)
     check_job_user(db, user, job)
-    progress = rules.get_progress_report(db, job, user)
+    progress = unitserver.get_progress_report(db, job, user)
     if progress['n_coded'] != progress['n_total']:
         raise HTTPException(
             status_code=404, detail='Can only get debrief information once job is completed')

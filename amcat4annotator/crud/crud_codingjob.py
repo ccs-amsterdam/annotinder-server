@@ -43,10 +43,10 @@ def add_units(db: Session, job: CodingJob, units: List[dict]) -> None:
         if unit_type not in ['pre', 'train', 'test', 'code', 'post']:
             raise HTTPException(status_code=400,
                                 detail='Invalid unit type ("{unit_type}"). Has to be "code", "train", "test", or "survey"'.format(unit_type=unit_type))
-        position = u.get('position', 'job')
-        if position not in ['pre', 'post', 'job']:
+        position = u.get('position', None)
+        if position not in ['pre', 'post', None]:
             raise HTTPException(status_code=400,
-                                detail='Invalid position ("{position}"). Has to be "pre", "job" or "post"'.format(position=position))
+                                detail='Invalid position ("{position}"). Has to be "pre", "post" or None'.format(position=position))
         unit_list.append(Unit(
             codingjob_id=job.id, external_id=u['id'], unit=u['unit'], unit_type=unit_type, position=position, conditionals=u.get('conditionals')))
 
@@ -71,7 +71,6 @@ def add_jobsets(db: Session, job: CodingJob, jobsets: list, codebook: dict) -> N
             status_code=400, detail='jobset items must have unique names')
 
     for jobset in jobsets:
-        print('-----------')
         db_jobset = JobSet(
             codingjob=job, jobset=jobset['name'], codebook=jobset['codebook'])
         db.add(db_jobset)
@@ -79,7 +78,7 @@ def add_jobsets(db: Session, job: CodingJob, jobsets: list, codebook: dict) -> N
         db.refresh(db_jobset)
 
         unit_set = []
-        for position in ['pre', 'job', 'post']:
+        for position in ['pre', None, 'post']:
             for unit in prepare_unit_sets(db, jobset, position, job, db_jobset):
                 unit_set.append(unit)
 
@@ -91,10 +90,13 @@ def prepare_unit_sets(db, jobset, position, job, db_jobset):
     """
     Units are organized in sets relating to positions.
     - pre: units shown at the start of a job. Typically survey/experiment questions.
-    - job: the set of coding units. job units don't have fixed positions, but are subject to positioning based on rules. 
+    - None: units with no fixed positions. Position is based on ruleset
     - post: units shown at the end of a job
     """
-    ids_key = position + '_ids'
+    if position is None:
+        ids_key = 'ids'
+    else:
+        ids_key = position + '_ids'
     if ids_key not in jobset or jobset[ids_key] is None:
         # if no id set is specified, use all units of this type
         units = db.query(Unit.external_id).filter(
@@ -103,7 +105,13 @@ def prepare_unit_sets(db, jobset, position, job, db_jobset):
     else:
         ids = jobset[ids_key]
 
-    for ext_id in ids:
+    for i, ext_id in enumerate(ids):
+        fixed_index = None
+        if position == 'pre':
+            fixed_index = i
+        if position == 'post':
+            fixed_index = i - len(ids)
+
         unit = db.query(Unit).filter(
             Unit.codingjob_id == job.id, Unit.external_id == ext_id).first()
 
@@ -118,7 +126,7 @@ def prepare_unit_sets(db, jobset, position, job, db_jobset):
             raise HTTPException(
                 status_code=400, detail='A unit (id = {id}) has impossible conditionals ({invalid})'.format(id=ext_id, invalid=', '.join(invalid_variables)))
 
-        yield JobSetUnits(jobset_id=db_jobset.id, unit_id=unit.id, position=position, has_conditionals=unit.conditionals is not None)
+        yield JobSetUnits(jobset_id=db_jobset.id, unit_id=unit.id, fixed_index=fixed_index, has_conditionals=unit.conditionals is not None)
 
 
 def get_job_coders(db, codingjob_id: int) -> Iterable[str]:

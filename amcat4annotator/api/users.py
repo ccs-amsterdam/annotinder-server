@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException, status, Response
-from fastapi.params import Body, Depends
+from fastapi.params import Body, Depends, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
-from amcat4annotator import rules
+from amcat4annotator import unitserver
 ##from amcat4annotator.db import Unit, Annotation, User, get_user_jobs, get_user_data
 ##from amcat4annotator.auth import check_admin
 
@@ -77,14 +77,16 @@ def set_password(email: str,
 
 
 @app_annotator_users.get("")
-def get_users(user: User = Depends(auth_user), db: Session = Depends(get_db)):
+def get_users(offset: int = Query(None, description="Offset in User table"),
+              n: int = Query(None, description="Number of users"),
+              user: User = Depends(auth_user), 
+              db: Session = Depends(get_db)):
     """
     Get a list of all users
     """
     check_admin(user)
-    users = crud_user.get_users(db)
-    return {"users": users}
-
+    return crud_user.get_users(db, offset, n)
+    
 
 @app_annotator_users.post("", status_code=204)
 def add_users(users: list = Body(None, description="An array of dictionaries with the keys: email, password, admin", embed=True),  # notice the embed, because users is (currently) only key in body

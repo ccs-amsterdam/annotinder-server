@@ -1,6 +1,6 @@
 import pytest
 
-from amcat4annotator.models import CodingJob, User, Annotation
+from annotinder.models import CodingJob, User, Annotation
 
 from tests.conftest import UNITS
 

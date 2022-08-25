@@ -4,8 +4,8 @@ from sqlalchemy import true
 
 from sqlalchemy.orm import Session
 
-from amcat4annotator.models import User, Unit, CodingJob, Annotation, JobUser, JobSetUnits, JobSet
-from amcat4annotator.crud.conditionals import check_conditionals, invalid_conditionals
+from annotinder.models import User, Unit, CodingJob, Annotation, JobUser, JobSetUnits, JobSet
+from annotinder.crud.conditionals import check_conditionals, invalid_conditionals
 
 import datetime
 from typing import List, Iterable, Optional

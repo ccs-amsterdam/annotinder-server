@@ -3,16 +3,12 @@ import hashlib
 from fastapi import APIRouter, HTTPException, status
 from fastapi.params import Query, Depends
 
-#from amcat4annotator import auth
-#from amcat4annotator.db import User
-#from amcat4annotator.auth import verify_jobtoken
-
 from sqlalchemy.orm import Session
 
-from amcat4annotator.crud import crud_user
-from amcat4annotator.database import engine, get_db
-from amcat4annotator.auth import verify_jobtoken, get_token
-from amcat4annotator.models import User
+from annotinder.crud import crud_user
+from annotinder.database import engine, get_db
+from annotinder.auth import verify_jobtoken, get_token
+from annotinder.models import User
 
 
 app_annotator_guest = APIRouter(prefix='/guest', tags=["annotator guest"])

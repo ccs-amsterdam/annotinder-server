@@ -7,5 +7,5 @@ bind = 'localhost:5001'
 
 # Logging
 #loglevel = 'debug'
-#accesslog = '/tmp/amcat4annotator_access_log'
-#errorlog =  '/tmp/amcat4annotator_error_log'
+#accesslog = '/tmp/annotinder_access_log'
+#errorlog =  '/tmp/annotinder_error_log'

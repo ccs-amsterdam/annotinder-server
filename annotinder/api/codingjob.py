@@ -6,16 +6,16 @@ from fastapi import APIRouter, HTTPException, Response
 from fastapi.params import Query, Body, Depends
 
 
-from amcat4annotator.api.common import _job, _jobset
-from amcat4annotator import unitserver
+from annotinder.api.common import _job, _jobset
+from annotinder import unitserver
 
 from sqlalchemy.orm import Session
 
-from amcat4annotator.crud import crud_codingjob
-from amcat4annotator.database import engine, get_db
-from amcat4annotator.auth import auth_user, check_admin, get_jobtoken, check_job_user
-from amcat4annotator.models import Unit, User, JobSetUnits
-from amcat4annotator.crud.conditionals import check_conditionals
+from annotinder.crud import crud_codingjob
+from annotinder.database import engine, get_db
+from annotinder.auth import auth_user, check_admin, get_jobtoken, check_job_user
+from annotinder.models import Unit, User, JobSetUnits
+from annotinder.crud.conditionals import check_conditionals
 
 app_annotator_codingjob = APIRouter(
     prefix='/codingjob', tags=["annotator codingjob"])

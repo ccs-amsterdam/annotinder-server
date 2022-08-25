@@ -1,7 +1,7 @@
 import pytest
 
-from amcat4annotator.models import User, CodingJob
-from amcat4annotator.unitserver import get_next_unit, get_ruleset, get_progress_report, seek_unit
+from annotinder.models import User, CodingJob
+from annotinder.unitserver import get_next_unit, get_ruleset, get_progress_report, seek_unit
 
 
 def test_crowdcoding_next(job: int, user: User):

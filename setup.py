@@ -3,12 +3,12 @@
 from distutils.core import setup
 
 setup(
-    name="amcat4annotator",
-    version="0.31",
-    description="Annotator Backend API for AmCAT4 Text Analysis",
+    name="annotinder",
+    version="0.4",
+    description="Backend for Annotinder",
     author="Kasper Welbers, Wouter van Atteveldt, Farzam Fanitabasi",
-    author_email="wouter@vanatteveldt.com",
-    packages=["amcat4annotator", "amcat4annotator.api"],
+    author_email="kasperwelbers@gmail.com",
+    packages=["annotinder", "annotinder.api"],
     include_package_data=True,
     zip_safe=False,
     keywords=["API", "text"],

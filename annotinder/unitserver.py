@@ -3,9 +3,9 @@ from typing import Optional, Tuple, List
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from amcat4annotator.models import Unit, User, Annotation, CodingJob, JobSetUnits, JobSet
-from amcat4annotator.crud import crud_codingjob
-from amcat4annotator.utils import random_indices
+from annotinder.models import Unit, User, Annotation, CodingJob, JobSetUnits, JobSet
+from annotinder.crud import crud_codingjob
+from annotinder.utils import random_indices
 
 
 class ValidationError(Exception):
@@ -227,25 +227,22 @@ class CrowdCoding(UnitServer):
         if unit:
             return unit, unit_index
 
-        # for the following steps, need to have the unit selection for the user's jobset
-        # and the jobset itself for looking only at annotations from other users in the same set
-        jobset = self.jobset()
-
+    
         # (3) Is there a unit left in the jobset that has not yet been annotated by anyone?
         uncoded = self.db.query(JobSetUnits).outerjoin(Annotation, JobSetUnits.unit_id == Annotation.unit_id).filter(
-            JobSetUnits.jobset_id == jobset.id, Annotation.id == None).first()
+            JobSetUnits.jobset_id == self.jobset.id, Annotation.id == None).first()
         if uncoded:
             return self.db.query(Unit).filter(Unit.id == uncoded.unit_id).first(), unit_index
 
         # (4) select a unit from the jobset that is uncoded by me, and least coded by anyone else in the same jobset
         coded = self.db.query(Annotation.unit_id).filter(
-            Annotation.jobset_id == jobset.id, Annotation.coder_id == self.coder.id).all()
+            Annotation.jobset_id == self.jobset.id, Annotation.coder_id == self.coder.id).all()
         coded_id = [a.unit_id for a in coded]
 
         least_coded = (
             self.db.query(JobSetUnits.unit_id).outerjoin(
                 Annotation, JobSetUnits.unit_id == Annotation.unit_id)
-            .filter(JobSetUnits.jobset_id == jobset.id, JobSetUnits.unit_id.not_in(coded_id))
+            .filter(JobSetUnits.jobset_id == self.jobset.id, JobSetUnits.unit_id.not_in(coded_id))
             .group_by(JobSetUnits.unit_id)
             .order_by(func.count(Annotation.id))
             .first()

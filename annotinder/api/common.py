@@ -1,7 +1,7 @@
 
-from amcat4annotator.models import CodingJob, JobSet
+from annotinder.models import CodingJob, JobSet
 from fastapi import HTTPException
-from amcat4annotator.crud import crud_codingjob
+from annotinder.crud import crud_codingjob
 from sqlalchemy.orm import Session
 
 

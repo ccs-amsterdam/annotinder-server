@@ -2,9 +2,9 @@ from base64 import b64encode
 
 import json
 
-from amcat4annotator import auth
-from amcat4annotator.models import CodingJob, Annotation
-from amcat4annotator.crud import crud_codingjob, crud_user
+from annotinder import auth
+from annotinder.models import CodingJob, Annotation
+from annotinder.crud import crud_codingjob, crud_user
 
 from tests.conftest import get_json, post_json, UNITS, CODEBOOK, RULES
 

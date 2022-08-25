@@ -1,10 +1,10 @@
 import pytest
 from fastapi.testclient import TestClient
 
-import amcat4annotator
-from amcat4annotator import auth, api
-from amcat4annotator.database import get_test_db
-from amcat4annotator.crud import crud_codingjob, crud_user
+import annotinder
+from annotinder import auth, api
+from annotinder.database import get_test_db
+from annotinder.crud import crud_codingjob, crud_user
 
 UNITS = [{"id": 1, "unit": {"text": "unit1"}},
          {"id": 2, "unit": {"text": "unit2"}, "gold": {"element": "au"}}]
@@ -66,7 +66,7 @@ def job():
 
 @pytest.fixture()
 def app():
-    return amcat4annotator.app
+    return annotinder.app
 
 
 def build_headers(user=None, headers=None, password=None):

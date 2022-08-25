@@ -1,6 +1,6 @@
 from typing import List, Tuple
 from sqlalchemy import true
-from amcat4annotator.models import Unit, Annotation
+from annotinder.models import Unit, Annotation
 
 
 def default_conditionals(type: str) -> Tuple[str, str, str, float]:

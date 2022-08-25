@@ -3,15 +3,12 @@ from fastapi.params import Body, Depends, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
-from amcat4annotator import unitserver
-##from amcat4annotator.db import Unit, Annotation, User, get_user_jobs, get_user_data
-##from amcat4annotator.auth import check_admin
-
-from amcat4annotator import models
-from amcat4annotator.crud import crud_user
-from amcat4annotator.database import engine, get_db
-from amcat4annotator.auth import auth_user, check_admin, get_token
-from amcat4annotator.models import Unit, User, Annotation
+from annotinder import unitserver
+from annotinder import models
+from annotinder.crud import crud_user
+from annotinder.database import engine, get_db
+from annotinder.auth import auth_user, check_admin, get_token
+from annotinder.models import Unit, User, Annotation
 
 
 models.Base.metadata.create_all(bind=engine)
@@ -79,6 +76,7 @@ def set_password(email: str,
 @app_annotator_users.get("")
 def get_users(offset: int = Query(None, description="Offset in User table"),
               n: int = Query(None, description="Number of users"),
+              
               user: User = Depends(auth_user), 
               db: Session = Depends(get_db)):
     """

@@ -3,7 +3,7 @@ from sqlalchemy import func, Boolean, Column, ForeignKey, Integer, String, Float
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.orm import relationship
 
-from amcat4annotator.database import Base
+from annotinder.database import Base
 
 
 class JsonString(TypeDecorator):

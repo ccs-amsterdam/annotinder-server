@@ -8,16 +8,16 @@ import logging
 
 import uvicorn
 
-from amcat4annotator.api import app
+from annotinder.api import app
 
-from amcat4annotator.crud import crud_user
-from amcat4annotator.models import User
-from amcat4annotator.database import SessionLocal
-from amcat4annotator.auth import get_token, verify_token, hash_password, verify_password
+from annotinder.crud import crud_user
+from annotinder.models import User
+from annotinder.database import SessionLocal
+from annotinder.auth import get_token, verify_token, hash_password, verify_password
 
 def run(args):
     logging.info(f"Starting server at port {args.port}, reload={not args.noreload}")
-    uvicorn.run("amcat4annotator.api:app", host="0.0.0.0", port=args.port, reload=not args.noreload)
+    uvicorn.run("annotinder.api:app", host="0.0.0.0", port=args.port, reload=not args.noreload)
     
 def _print_user(u: User):
     print(json.dumps(dict(id=u.id, email=u.email, is_admin=u.is_admin, password=bool(u.password))))

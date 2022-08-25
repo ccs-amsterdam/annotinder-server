@@ -4,11 +4,10 @@ from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from amcat4annotator.models import User, CodingJob, Annotation, JobUser, Unit
-from amcat4annotator import auth
-from amcat4annotator import unitserver
-from amcat4annotator.crud import crud_codingjob
-#from amcat4annotator import schemas
+from annotinder.models import User, CodingJob, Annotation, JobUser, Unit
+from annotinder import auth
+from annotinder import unitserver
+from annotinder.crud import crud_codingjob
 
 
 SECRET_KEY = "not very secret, sorry"
@@ -61,7 +60,7 @@ def get_users(db: Session, offset: int, n: int) -> list:
     """
     Retrieve list of users (admin only)
     """
-    users = db.query(User).offset(offset)
+    users = db.query(User).filter(User.restricted_job == None).offset(offset)
     total = users.count()
     if offset is not None: users.offset(offset)
     if n is not None: users.limit(n)

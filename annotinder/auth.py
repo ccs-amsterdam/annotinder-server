@@ -13,8 +13,8 @@ from fastapi.security import OAuth2PasswordBearer
 
 from sqlalchemy.orm import Session
 
-from amcat4annotator.models import User, CodingJob, JobUser
-from amcat4annotator.database import get_db
+from annotinder.models import User, CodingJob, JobUser
+from annotinder.database import get_db
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/users/me/token")
 

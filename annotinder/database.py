@@ -2,7 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-SQLALCHEMY_DATABASE_URL = "sqlite:///./amcat4annotator.db"
+SQLALCHEMY_DATABASE_URL = "sqlite:///./annotinder.db"
 SQLALCHEMY_TESTDB_URL = 'sqlite:///./test.db'
 
 engine = create_engine(

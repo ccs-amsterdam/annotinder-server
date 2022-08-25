@@ -1,17 +1,17 @@
 """
-AmCAT4 Annotator Module API
+Annotinder Annotator Module API
 """
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from amcat4annotator.api.users import app_annotator_users
-from amcat4annotator.api.codingjob import app_annotator_codingjob
-from amcat4annotator.api.guest import app_annotator_guest
+from annotinder.api.users import app_annotator_users
+from annotinder.api.codingjob import app_annotator_codingjob
+from annotinder.api.guest import app_annotator_guest
 
 
 app = FastAPI(
-  title="AmCAT4Annotator",
+  title="annotinder",
   description=__doc__,
   openapi_tags=[
     dict(name="annotator users", description="Endpoints for user management"),

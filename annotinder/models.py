@@ -87,6 +87,7 @@ class JobSetUnits(Base):
     fixed_index = Column(Integer, default=None, index=True)
     unit_type = Column(String, index=True)
     has_conditionals = Column(Boolean, default=False)
+    blocked = Column(Boolean, default=False) # block a unit from new assignments (e.g., coded enough, marked as irrelevant)
 
 
 class JobUser(Base):
@@ -98,6 +99,8 @@ class JobUser(Base):
     jobset_id = Column(Integer, ForeignKey('jobsets.id'), index=True)
     can_code = Column(Boolean, default=True)
     can_edit = Column(Boolean, default=False)
+    damage = Column(Float, default=0)
+    status = Column(String, )
 
     ForeignKeyConstraint(['user_id', 'codingjob_id'], [
                          'users.id', 'codingjobs.id'])
@@ -111,7 +114,7 @@ class Annotation(Base):
     unit_id = Column(Integer, ForeignKey('units.id'), index=True)
     coder_id = Column(Integer, ForeignKey('users.id'), index=True)
     jobset_id = Column(Integer, ForeignKey('jobsets.id'), index=True)
-    unit_index = Column(Integer, index=True)
+    unit_index = Column(Integer, index=True) # coder specific unit_index (needed for serve_unit)
     status = Column(String, index=True)
     modified = Column(DateTime(timezone=True), server_default=func.now())
     annotation = Column(JsonString)

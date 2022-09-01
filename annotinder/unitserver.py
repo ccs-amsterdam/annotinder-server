@@ -1,7 +1,7 @@
 from typing import Optional, Tuple, List
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from annotinder.models import Unit, User, Annotation, CodingJob, JobSetUnits, JobSet
 from annotinder.crud import crud_codingjob
@@ -71,6 +71,19 @@ class UnitServer:
         Returns two values. First is the Unit, which can be None if missing. Second is the unit index. 
         """
         raise NotImplementedError()
+
+    def update_jobsetunits(self, unit: Unit):
+        """
+        After a jobset unit has been served, we keep track of some statistics, such as the number
+        of coders per unit. These can be used by rulesets to give priority to certain units (e.g.,
+        with fewer codings) and to block units (e.g., crowd coding units with sufficient coders / agreement).
+        Note that JobSetUnits.coders should always be set (using self.count_coders) because this is also used
+        to display progress 
+        """
+        jobsetunit = self.db.query(JobSetUnits).filter(JobSetUnits.jobset_id == self.jobset.id, JobSetUnits.unit_id == unit.id).first()
+        if jobsetunit is not None:
+            jobsetunit.coders = self.count_coders(unit)
+            self.db.commit()
 
     def get_unit_with_status(self, statuses: List[str]):
         """
@@ -145,6 +158,13 @@ class UnitServer:
         This is separate from just unsing self.units().count() because a ruleset might specify an alternative (like units_per_coder in CrowdCoding)
         """
         return self.units().count()
+
+    def count_coders(self, unit: Unit):
+        """
+        Get total number of coders working on this unit (including IN_PROGRESS). The +1 is for the current coder (which we exclude from the annotations)
+        """
+        return 1 + self.db.query(Annotation.unit_id).filter(Annotation.coder_id != self.coder.id, Annotation.unit_id == unit.id, Annotation.jobset_id == self.jobset.id).count()
+
 
     def last_modified(self):
         crud_codingjob.get_jobset(self.db, self.job.id, self.coder.id, True)
@@ -227,22 +247,11 @@ class CrowdCoding(UnitServer):
         if unit:
             return unit, unit_index
 
-    
-        # (3) Is there a unit left in the jobset that has not yet been annotated by anyone?
-        uncoded = self.db.query(JobSetUnits).outerjoin(Annotation, JobSetUnits.unit_id == Annotation.unit_id).filter(
-            JobSetUnits.jobset_id == self.jobset.id, Annotation.id == None).first()
-        if uncoded:
-            return self.db.query(Unit).filter(Unit.id == uncoded.unit_id).first(), unit_index
-
-        # (4) select a unit from the jobset that is uncoded by me, and least coded by anyone else in the same jobset
-        coded = self.db.query(Annotation.unit_id).filter(
-            Annotation.jobset_id == self.jobset.id, Annotation.coder_id == self.coder.id).all()
-        coded_id = [a.unit_id for a in coded]
-
+        # (3) select a unit from the jobset that is uncoded by me, and least coded by anyone else in the same jobset
         least_coded = (
-            self.db.query(JobSetUnits.unit_id).outerjoin(
-                Annotation, JobSetUnits.unit_id == Annotation.unit_id)
-            .filter(JobSetUnits.jobset_id == self.jobset.id, JobSetUnits.unit_id.not_in(coded_id))
+            self.db.query(JobSetUnits.unit_id)
+            .outerjoin(Annotation, JobSetUnits.unit_id == Annotation.unit_id)
+            .filter(JobSetUnits.jobset_id == self.jobset.id, JobSetUnits.blocked == False, or_(Annotation.id == None, Annotation.coder_id != self.coder.id))
             .group_by(JobSetUnits.unit_id)
             .order_by(func.count(Annotation.id))
             .first()
@@ -250,8 +259,7 @@ class CrowdCoding(UnitServer):
         if least_coded:
             return self.db.query(Unit).filter(Unit.id == least_coded.unit_id).first(), unit_index
 
-        # No units were selected, so done coding I guess?
-        # (should we add a check for whether n_coded == self.n_total(job,coder) ?)
+        # No units were left without annotations by the coder, so done coding I guess?
         return None, unit_index
 
     def seek_unit(self,  index: int) -> Optional[Unit]:
@@ -266,15 +274,24 @@ class CrowdCoding(UnitServer):
 
         # (2) Get unit by index. For crowd coding this can only be units that already started
         #     (seek forward is impossible because the next unit is determined by the crowd)
-        self.get_started_unit(index), index
+        return self.get_started_unit(index), index
 
     def n_total(self):
         """
-        For CrowdCoding, the number of units can be limited with the units_per_coder setting
+        For CrowdCoding, the number of units can be limited with the units_per_coder setting.
+        Also, units can be blocked (e.g., saturated, marked irrelevant), so we can ran out of units,
+        and coders that join later might have a different n_total.
         """
         n_units = self.units().count()
+
+        n_units = (
+            self.db.query(JobSetUnits.unit_id)
+            .outerjoin(Annotation, JobSetUnits.unit_id == Annotation.unit_id)
+            .filter(JobSetUnits.jobset_id == self.jobset.id, or_(JobSetUnits.blocked == False, Annotation.coder_id != self.coder.id))
+            .count()
+        )
         if 'units_per_coder' in self.job.rules:
-            return min(self.job.rules['units_per_coder'], n_units)
+            n_units = min(self.job.rules['units_per_coder'], n_units)
         return n_units
 
 
@@ -286,15 +303,19 @@ def get_unitserver(db: Session, job: CodingJob, coder: User) -> UnitServer:
     return unitserver_class(db, job, coder)
 
 
-def get_next_unit(db, job: CodingJob, coder: User) -> Optional[Unit]:
-    """Return the next unit to code, or None if coder is done"""
-    unit, i = get_unitserver(db, job, coder).get_next_unit()
+def serve_unit(db, job: CodingJob, coder: User, index: Optional[int]) -> Optional[Unit]:
+    """Serve a unit from a jobset."""
+    unitserver = get_unitserver(db, job, coder)
+    if index is not None:
+        index = int(index)
+        unit, i = unitserver.seek_unit(index)
+    else:
+        unit, i = unitserver.get_next_unit()
+    
+    if unit is not None: 
+        unitserver.update_jobsetunits(unit)
+
     return unit, i
-
-
-def seek_unit(db, job: CodingJob, coder: User, index: int) -> Optional[Unit]:
-    """Seek a specific unit to code by index"""
-    return get_unitserver(db, job, coder).seek_unit(index)
 
 
 def get_progress_report(db, job: CodingJob, coder: User) -> dict:

@@ -256,30 +256,7 @@ def get_unit(job_id,
     """
     job = _job(db, job_id)
     check_job_user(db, user, job)
-    if index is not None:
-        index = int(index)
-        u, index = unitserver.seek_unit(db, job, user, index=index)
-    else:
-        u, index = unitserver.get_next_unit(db, job, user)
-    if u is None:
-        if index is None:
-            raise HTTPException(status_code=404)
-        else:
-            return {'index': index}
-
-    result = {'id': u.id, 'unit': u.unit, 'index': index}
-    a = crud_codingjob.get_unit_annotations(db, u.id, user.id)
-    if a:
-        result['annotation'] = a.annotation
-        result['status'] = a.status
-
-        # check conditionals and return failures so that coders immediately see the
-        # feedback when opening the unit
-        damage, report = check_conditionals(
-            u, a.annotation, report_success=False)
-        result['report'] = report
-
-    return result
+    return crud_codingjob.get_unit(db, user, job, index)
 
 
 @app_annotator_codingjob.post("/{job_id}/unit/{unit_id}/annotation", status_code=200)
@@ -296,7 +273,7 @@ def post_annotation(job_id: int,
     POST body should consist of a json object:
     {
       "annotation": [{..blob..}],
-      "status": "DONE"|"IN_PROGRESS"|"SKIPPED"|"RETRY"  # optional
+      "status": "DONE"|"IN_PROGRESS"
     }
     """
     unit = db.query(Unit).filter(Unit.id == unit_id).first()

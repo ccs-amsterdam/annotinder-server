@@ -29,16 +29,16 @@ def check_conditionals(unit: Unit, annotation: dict, report_success=True) -> Tup
       as IN_PROGRESS, and the coder can't continue before the right answer is given
     """
     damage = 0
-    report = {}
+    evaluation = {}
     if unit.conditionals is None:
-        return damage, report
+        return damage, evaluation
 
     defaultSuccessAction, defaultFailAction, defaultMessage, defaultDamage = default_conditionals(
         unit.unit_type)
 
     for conditional in unit.conditionals:
-        if conditional['variable'] not in report:
-            report[conditional['variable']] = {}
+        if conditional['variable'] not in evaluation:
+            evaluation[conditional['variable']] = {}
 
         variable_coded = False
         success = True
@@ -99,20 +99,19 @@ def check_conditionals(unit: Unit, annotation: dict, report_success=True) -> Tup
 
         if success:
             if report_success:
-                print('what')
-                report[conditional['variable']]['action'] = conditional.get(
+                evaluation[conditional['variable']]['action'] = conditional.get(
                     'onSuccess', defaultSuccessAction)
         else:
-            report[conditional['variable']]['action'] = conditional.get(
+            evaluation[conditional['variable']]['action'] = conditional.get(
                 'onFail', defaultFailAction)
-            report[conditional['variable']]['message'] = conditional.get(
+            evaluation[conditional['variable']]['message'] = conditional.get(
                 'message', defaultMessage)
-            report[conditional['variable']]['submessages'] = submessages
-            report[conditional['variable']]['correct'] = correctAnnotation
-            report[conditional['variable']]['incorrect'] = incorrectAnnotation
+            evaluation[conditional['variable']]['submessages'] = submessages
+            evaluation[conditional['variable']]['correct'] = correctAnnotation
+            evaluation[conditional['variable']]['incorrect'] = incorrectAnnotation
 
         damage += conditional.get('damage', defaultDamage)
-    return damage, report
+    return damage, evaluation
 
 
 def invalid_conditionals(unit: Unit, codebook: dict) -> List:

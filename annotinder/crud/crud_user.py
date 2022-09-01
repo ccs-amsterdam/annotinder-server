@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from annotinder.models import User, CodingJob, Annotation, JobUser, Unit
 from annotinder import auth
 from annotinder import unitserver
-from annotinder.crud import crud_codingjob
 
 
 SECRET_KEY = "not very secret, sorry"
@@ -16,7 +15,7 @@ SECRET_KEY = "not very secret, sorry"
 def verify_password(db: Session, username: str, password: str):
     u = db.query(User).filter(User.email == username).first()
     if not u:
-        logging.warning(f"User {u} does not exist")
+        logging.warning(f"User {username} does not exist")
         return None
     elif not u.password:
         logging.warning(f"Password for {u} is missing")
@@ -52,7 +51,7 @@ def change_password(db: Session, email: str, password: str):
     if not u:
         logging.warning(f"User {u} does not exist")
     else:
-        u.password = hash_password(password)
+        u.password = auth.hash_password(password)
         db.commit()
 
 

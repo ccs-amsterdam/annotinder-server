@@ -1,11 +1,12 @@
 import logging
 from typing import Optional, Tuple
-from sqlalchemy import true
+from sqlalchemy import true, func
 
 from sqlalchemy.orm import Session
 
 from annotinder.models import User, Unit, CodingJob, Annotation, JobUser, JobSetUnits, JobSet
 from annotinder.crud.conditionals import check_conditionals, invalid_conditionals
+from annotinder import unitserver
 
 import datetime
 from typing import List, Iterable, Optional
@@ -203,6 +204,41 @@ def get_annotations(db: Session, job_id: int):
         yield {"jobset": jobset.jobset, "unit_id": unit.external_id, "coder": user.email, "annotation": annotation.annotation, "status": annotation.status}
 
 
+def get_unit(db: Session, user: User, job: CodingJob, index: Optional[int]): 
+    u, index = unitserver.serve_unit(db, job, user, index=index)
+    if u is None:
+        if index is None:
+            raise HTTPException(status_code=404)
+        else:
+            return {'index': index}
+
+    unit = {'id': u.id, 'unit': u.unit, 'index': index}
+    a = get_unit_annotations(db, u.id, user.id)
+    if a:
+        unit['annotation'] = a.annotation
+        unit['status'] = a.status
+
+        # check conditionals and return failures so that coders immediately see the
+        # feedback when opening the unit
+        damage, report = check_conditionals(
+            u, a.annotation, report_success=False)
+        unit['report'] = report
+    else:
+        # when serving a new unit, immediately create an annotation with "IN_PROGRESS" status. This is needed
+        # for crowdcoding to prevent coders that work simultaneaouly from getting served the
+        # same units (because they wouldn't be annotated yet). Note that it doesn't matter that
+        # much if the coder then doesn't actually finish the unit, as long as rules for blocking
+        # units that have enough annotations/agreement look only at completed units
+        jobuser = db.query(JobUser).filter(JobUser.codingjob_id == u.codingjob_id, 
+                                           JobUser.user_id == user.id).first()
+        ann = Annotation(unit_id=u.id, coder_id=user.id, annotation=[], jobset_id=jobuser.jobset_id,
+                         status='IN_PROGRESS', damage=0, unit_index=index)
+        db.add(ann)
+        db.commit()
+
+    return unit
+
+
 def get_unit_annotations(db: Session, unit_id: int, coder_id: int):
     return db.query(Annotation).filter(Annotation.unit_id == unit_id, Annotation.coder_id == coder_id).first()
 
@@ -219,17 +255,19 @@ def set_annotation(db: Session, unit: Unit, coder: User, annotation: list, statu
     ann = db.query(Annotation).filter(Annotation.unit_id ==
                                       unit.id, Annotation.coder_id == coder.id).first()
 
-    damage, report = check_conditionals(unit, annotation)
+    damage, evaluation = check_conditionals(unit, annotation)
 
     # force a status based on conditionals results. Also, store certain reports actions
-    # in the annotation. These actions are then
-    for action in report.values():
+    # in the annotation. These actions are then returned when the unit is served again.
+    for action in evaluation.values():
         ca = action.get('action', None)
         if ca in ['retry', 'block']:
             status = 'RETRY'
         if ca == 'block':
-            # here block entire job
+            # here block entire job? could be usefull for screening (e.g., minimum age).
             None
+
+    job = db.query(CodingJob.rules).filter(CodingJob.id == unit.codingjob_id).first()
 
     if ann is None:
         n_coded = db.query(Annotation).filter(
@@ -241,10 +279,46 @@ def set_annotation(db: Session, unit: Unit, coder: User, annotation: list, statu
         ann.annotation = annotation
         ann.status = status
         ann.modified = datetime.datetime.now()
+        if job.rules is None or not job.rules.get('heal_damage', False):
+            damage = max(ann.damage, damage)
         ann.damage = damage
+    db.flush()
     db.commit()
-    return report
 
+    if damage > 0:
+        damage_report = process_damage(damage, db, job, jobuser, coder, unit)
+    else:
+        damage_report = {}
+
+    return {"damage": damage_report, "evaluation": evaluation}
+
+
+def process_damage(db: Session, job: CodingJob, jobuser: JobUser, coder: User, unit: Unit):
+    """
+    if damage > 0, update the total damage.
+    if job.rules has max_damage, also check total damage to determine if coder has to be disqualified from job.
+    """
+    # get damage for all the other units for this coder+jobset.
+    # (we can't include the current unit, because we then might count previous damage double) 
+    damage = (db.query(func.sum(Annotation.damage))
+                .filter(Annotation.jobset_id == jobuser.jobset_id, 
+                        Annotation.coder_id == coder.id).scalar())
+        
+    # check for max damage
+    if job.rules is None: return
+    
+    damage_report = {}
+    
+    if job.rules.get('show_damage', False):
+        damage_report['damage'] = damage
+
+    if 'max_damage' in job.rules:
+        if job.rules.get('show_damage', False):
+            damage_report['health'] = job.rules['max_damage']
+        if damage > job.rules['max_damage']:
+            damage_report['game_over'] = True    
+
+    return damage_report
 
 def get_jobset(db: Session, job_id: int, user_id: int, assign_set: bool) -> JobUser:
     jobuser = db.query(JobUser).filter(JobUser.codingjob_id ==

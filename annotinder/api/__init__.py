@@ -20,9 +20,9 @@ app = FastAPI(
   ]
 )
 
-app.include_router(app_annotator_users, prefix='/annotator')
-app.include_router(app_annotator_codingjob, prefix='/annotator')
-app.include_router(app_annotator_guest, prefix='/annotator')
+app.include_router(app_annotator_users)
+app.include_router(app_annotator_codingjob)
+app.include_router(app_annotator_guest)
 
 app.add_middleware(
   CORSMiddleware,

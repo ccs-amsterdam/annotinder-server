@@ -220,9 +220,9 @@ def get_unit(db: Session, user: User, job: CodingJob, index: Optional[int]):
 
         # check conditionals and return failures so that coders immediately see the
         # feedback when opening the unit
-        damage, report = check_conditionals(
+        damage, evaluation = check_conditionals(
             u, a.annotation, report_success=False)
-        unit['report'] = report
+        unit['report'] = {"evaluation": evaluation}
     else:
         # when serving a new unit, immediately create an annotation with "IN_PROGRESS" status. This is needed
         # for crowdcoding to prevent coders that work simultaneaouly from getting served the
@@ -256,7 +256,7 @@ def set_annotation(db: Session, unit: Unit, coder: User, annotation: list, statu
                                       unit.id, Annotation.coder_id == coder.id).first()
 
     damage, evaluation = check_conditionals(unit, annotation)
-
+    
     # force a status based on conditionals results. Also, store certain reports actions
     # in the annotation. These actions are then returned when the unit is served again.
     for action in evaluation.values():
@@ -273,7 +273,7 @@ def set_annotation(db: Session, unit: Unit, coder: User, annotation: list, statu
         n_coded = db.query(Annotation).filter(
             Annotation.jobset_id == jobuser.jobset_id, Annotation.coder_id == coder.id).count()
         ann = Annotation(unit_id=unit.id, coder_id=coder.id, annotation=annotation, jobset_id=jobuser.jobset_id,
-                         status=status, damage=damage, unit_index=n_coded)
+                         status=status, damage=damage, unit_index=n_coded, report=report)
         db.add(ann)
     else:
         ann.annotation = annotation
@@ -286,7 +286,7 @@ def set_annotation(db: Session, unit: Unit, coder: User, annotation: list, statu
     db.commit()
 
     if damage > 0:
-        damage_report = process_damage(damage, db, job, jobuser, coder, unit)
+        damage_report = process_damage(db, job, jobuser, coder, unit)
     else:
         damage_report = {}
 
@@ -295,27 +295,38 @@ def set_annotation(db: Session, unit: Unit, coder: User, annotation: list, statu
 
 def process_damage(db: Session, job: CodingJob, jobuser: JobUser, coder: User, unit: Unit):
     """
-    if damage > 0, update the total damage.
     if job.rules has max_damage, also check total damage to determine if coder has to be disqualified from job.
     """
-    # get damage for all the other units for this coder+jobset.
-    # (we can't include the current unit, because we then might count previous damage double) 
-    damage = (db.query(func.sum(Annotation.damage))
-                .filter(Annotation.jobset_id == jobuser.jobset_id, 
-                        Annotation.coder_id == coder.id).scalar())
-        
-    # check for max damage
-    if job.rules is None: return
+    # add damage for all the other units for this coder+jobset.
+    # (don't include the current unit, because we then might count previous damage double) 
+    total_damage =  (db.query(func.sum(Annotation.damage))
+                       .filter(Annotation.jobset_id == jobuser.jobset_id, 
+                               Annotation.coder_id == coder.id).scalar())
+
+    jobuser = db.query(JobUser).filter(JobUser.job_id = job.id, JobUser.user_id = coder.id).first()
+    jobuser.damage = total_damage
+    db.flush()
     
-    damage_report = {}
-    
+    create_damage_report(db, job, coder, jobuser)
+
+
+def create_damage_report(db: Session, job:CodingJob, coder: User, jobuser: JobUser):
+    """
+    get damage from jobuser tabel
+    (so in process_damage, first update this table, then run this function)
+    """
+    damage_report = {}    
+
+    if jobuser is None: return damage_report
+    if job.rules is None: return damage_report
+
     if job.rules.get('show_damage', False):
-        damage_report['damage'] = damage
+        damage_report['damage'] = jobuser.damage
 
     if 'max_damage' in job.rules:
         if job.rules.get('show_damage', False):
             damage_report['health'] = job.rules['max_damage']
-        if damage > job.rules['max_damage']:
+        if jobuser.damage > job.rules['max_damage']:
             damage_report['game_over'] = True    
 
     return damage_report

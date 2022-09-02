@@ -118,6 +118,8 @@ class Annotation(Base):
     status = Column(String, index=True)
     modified = Column(DateTime(timezone=True), server_default=func.now())
     annotation = Column(JsonString)
+    report = Column(JsonString, nullable=True)
+
     damage = Column(Float, default=0)
 
     unit = relationship('Unit', back_populates='annotations')

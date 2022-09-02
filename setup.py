@@ -18,6 +18,8 @@ setup(
         "Topic :: Text Processing",
     ],
     install_requires=[
+        'uvicorn[standard]',
+        'python-multipart',
         "fastapi",
         "sqlalchemy",
         "pydantic",
@@ -26,11 +28,9 @@ setup(
     ],
     extras_require={
         'dev': [
-            'uvicorn[standard]',
             'gunicorn',
             'pytest',
             'codecov',
-            'python-multipart'
         ]
     },
 )

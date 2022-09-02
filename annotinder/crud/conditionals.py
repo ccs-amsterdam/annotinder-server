@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Union
 from sqlalchemy import true
 from annotinder.models import Unit, Annotation
 
@@ -176,7 +176,8 @@ def valid_annotate_conditionals(variable, conditions, variables):
 
 def get_code_values(codes):
     """
-    codes can be an array of dictionaries that have a 'code' key (and other details), or a simple array of strings, in which case the string is the code.
+    codes can be an array of dictionaries that have a 'code' key (and other details), 
+    or a simple array of strings, in which case the string is the code.
     """
     values = []
     for code in codes:
@@ -251,7 +252,7 @@ def position_is_possible(conditions, unit):
     return True
 
 
-def get_condition_value(condition: dict) -> str | float:
+def get_condition_value(condition: dict) -> Union[str, float]:
     """
     standardize the condition value to either str or float
     """

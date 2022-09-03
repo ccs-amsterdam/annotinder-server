@@ -23,15 +23,10 @@ class UnitServer:
     - What Q/A measures are in place?
     """
 
-    def __init__(self, db: Session, job: CodingJob, coder: User):
+    def __init__(self, db: Session, coder: User, jobset: JobSet):
         self.db = db
-        self.job = job
         self.coder = coder
-
-        # A job can have multiple jobsets. The get_jobset function also assigns
-        # a coder to a jobset if not yet assigned. 
-        self.jobset = crud_codingjob.get_jobset(db, job.id, coder.id, True)
-
+        self.jobset = jobset
 
     def get_progress(self) -> dict:
         """
@@ -41,9 +36,6 @@ class UnitServer:
         # per codingjob. But maybe we should not encourage this, and instead focus on use cases where one
         # might think this would be wise. The only case I can think of is having a coder do more units
         # beyond the set, but then there should be better ways that doing other (partially overlapping) sets.
-
-        # jobset = crud_codingjob.get_jobset(
-        #     self.db, job.id, coder.id, False)
 
         last_modified = self.db.query(Annotation.modified, func.max(Annotation.modified)).filter(Annotation.coder_id == self.coder.id, Annotation.jobset_id == self.jobset.id).first()
 
@@ -90,7 +82,7 @@ class UnitServer:
         get first unit with a particular status
         """
         ann = self.db.query(Annotation.unit_id, Annotation.unit_index).join(JobSet).filter(
-            JobSet.codingjob_id == self.job.id, Annotation.coder_id == self.coder.id, Annotation.status.in_(statuses)).first()
+            JobSet.codingjob_id == self.jobset.codingjob_id, Annotation.coder_id == self.coder.id, Annotation.status.in_(statuses)).first()
         if ann:
             return self.db.query(Unit).filter(Unit.id == ann.unit_id).first(), ann.unit_index
         return None, None
@@ -101,7 +93,7 @@ class UnitServer:
         Can only get units before the current unit if can_seek_backwards is True.
         """
         ann = self.db.query(Annotation.unit_id, Annotation.unit_index).join(JobSet).filter(
-            JobSet.codingjob_id == self.job.id, Annotation.coder_id == self.coder.id, Annotation.unit_index == index).first()
+            JobSet.codingjob_id == self.jobset.codingjob_id, Annotation.coder_id == self.coder.id, Annotation.unit_index == index).first()
         if ann is None:
             return None
 
@@ -124,14 +116,14 @@ class UnitServer:
 
     @property
     def can_seek_backwards(self):
-        if 'can_seek_backwards' in self.job.rules:
-            return self.job.rules['can_seek_backwards']
+        if 'can_seek_backwards' in self.jobset.rules:
+            return self.jobset.rules['can_seek_backwards']
         return True
 
     @property
     def can_seek_forwards(self):
-        if 'can_seek_forwards' in self.job.rules:
-            return self.job.rules['can_seek_forwards']
+        if 'can_seek_forwards' in self.jobset.rules:
+            return self.jobset.rules['can_seek_forwards']
         return False
         
     def units(self):
@@ -144,13 +136,13 @@ class UnitServer:
         """
         Get coded units for a given job and user
         """
-        return self.db.query(Annotation).join(JobSet).filter(JobSet.codingjob_id == self.job.id, Annotation.coder_id == self.coder.id, Annotation.status != 'IN_PROGRESS')
+        return self.db.query(Annotation).join(JobSet).filter(JobSet.codingjob_id == self.jobset.codingjob_id, Annotation.coder_id == self.coder.id, Annotation.status != 'IN_PROGRESS')
 
     def started(self):
         """
         Get units that a user has already started in given job. 
         """
-        return self.db.query(Annotation).join(JobSet).filter(JobSet.codingjob_id == self.job.id, Annotation.coder_id == self.coder.id)
+        return self.db.query(Annotation).join(JobSet).filter(JobSet.codingjob_id == self.jobset.codingjob_id, Annotation.coder_id == self.coder.id)
 
     def n_total(self):
         """
@@ -166,9 +158,6 @@ class UnitServer:
         return 1 + self.db.query(Annotation.unit_id).filter(Annotation.coder_id != self.coder.id, Annotation.unit_id == unit.id, Annotation.jobset_id == self.jobset.id).count()
 
 
-    def last_modified(self):
-        crud_codingjob.get_jobset(self.db, self.job.id, self.coder.id, True)
-        jobset = self.jobset()
 
 
 
@@ -218,7 +207,7 @@ class FixedSet(UnitServer):
         units = self.units()
         if index < 0 or index >= units.count():
             return None
-        if 'randomize' in self.job.rules:
+        if 'randomize' in self.jobset.rules:
             # randomize using coder id as seed, so that each coder has a unique and fixed order
             random_mapping = random_indices(self.coder.id, units.count())
             index = random_mapping[index]
@@ -290,22 +279,22 @@ class CrowdCoding(UnitServer):
             .filter(JobSetUnits.jobset_id == self.jobset.id, or_(JobSetUnits.blocked == False, Annotation.coder_id != self.coder.id))
             .count()
         )
-        if 'units_per_coder' in self.job.rules:
-            n_units = min(self.job.rules['units_per_coder'], n_units)
+        if 'units_per_coder' in self.jobset.rules:
+            n_units = min(self.jobset.rules['units_per_coder'], n_units)
         return n_units
 
 
-def get_unitserver(db: Session, job: CodingJob, coder: User) -> UnitServer:
+def get_unitserver(db: Session, coder: User, jobset: JobSet) -> UnitServer:
     unitserver_class = {
         'crowdcoding': CrowdCoding,
         'fixedset': FixedSet,
-    }[job.rules['ruleset']]
-    return unitserver_class(db, job, coder)
+    }[jobset.rules['ruleset']]
+    return unitserver_class(db, coder, jobset)
 
 
-def serve_unit(db, job: CodingJob, coder: User, index: Optional[int]) -> Optional[Unit]:
+def serve_unit(db, coder: User, jobset: JobSet, index: Optional[int]) -> Optional[Unit]:
     """Serve a unit from a jobset."""
-    unitserver = get_unitserver(db, job, coder)
+    unitserver = get_unitserver(db, coder, jobset)
     if index is not None:
         index = int(index)
         unit, i = unitserver.seek_unit(index)
@@ -318,6 +307,6 @@ def serve_unit(db, job: CodingJob, coder: User, index: Optional[int]) -> Optiona
     return unit, i
 
 
-def get_progress_report(db, job: CodingJob, coder: User) -> dict:
+def get_progress_report(db, coder: User, jobset: JobSet) -> dict:
     """Return a progress report dictionary"""
-    return get_unitserver(db, job, coder).get_progress()
+    return get_unitserver(db, coder, jobset).get_progress()

@@ -21,16 +21,14 @@ def create_codingjob(db: Session, title: str, codebook: dict, jobsets: list, pro
         authorization = {}
     restricted = authorization.get('restricted', False)
 
-    job = CodingJob(title=title, rules=rules, debriefing=debriefing,
-                    creator=creator, provenance=provenance, restricted=restricted)
+    job = CodingJob(title=title, creator=creator, provenance=provenance, restricted=restricted)
     db.add(job)
     db.flush()
     db.refresh(job)
 
     add_units(db, job, units)
-    add_jobsets(db, job, jobsets, codebook)
-    set_job_coders(db, codingjob_id=job.id,
-                   emails=authorization.get('users', []))
+    add_jobsets(db, job=job, jobsets=jobsets, codebook=codebook, rules=rules, debriefing=debriefing)
+    set_job_coders(db, codingjob_id=job.id, emails=authorization.get('users', []))
 
     # Only commits at this point, so create_codingjob can be wrapped in a try/except that rolls back changes on fail
     db.commit()
@@ -41,7 +39,7 @@ def add_units(db: Session, job: CodingJob, units: List[dict]) -> None:
     unit_list = []
     for u in units:
         unit_type = u.get('type', 'code')
-        if unit_type not in ['pre', 'train', 'test', 'code', 'post']:
+        if unit_type not in ['train', 'test', 'code', 'survey']:
             raise HTTPException(status_code=400,
                                 detail='Invalid unit type ("{unit_type}"). Has to be "code", "train", "test", or "survey"'.format(unit_type=unit_type))
         position = u.get('position', None)
@@ -55,7 +53,7 @@ def add_units(db: Session, job: CodingJob, units: List[dict]) -> None:
     db.flush()
 
 
-def add_jobsets(db: Session, job: CodingJob, jobsets: list, codebook: dict) -> None:
+def add_jobsets(db: Session, job: CodingJob, jobsets: list, codebook: dict, rules: dict, debriefing: Optional[dict]) -> None:
     if jobsets is None:
         jobsets = [{"name": "All"}]
     for jobset in jobsets:
@@ -65,15 +63,25 @@ def add_jobsets(db: Session, job: CodingJob, jobsets: list, codebook: dict) -> N
         if 'codebook' not in jobset:
             if not codebook:
                 raise HTTPException(
-                    status_code=400, detail='Either codebook needs to be given, or all jobsets much have a codebook')
+                    status_code=400, detail='Either the codingjob needs to have a general codebook, or all jobsets have their own')
             jobset['codebook'] = codebook
+        if 'rules' not in jobset:
+            if not codebook:
+                raise HTTPException(
+                    status_code=400, detail='Either the codingjob needs to have rules, or all jobsets have their own')
+            jobset['rules'] = rules
+        if 'debriefing' not in jobset:
+            if not codebook:
+                raise HTTPException(
+                    status_code=400, detail='Either the codingjob needs to have a debriefing, or all jobsets have their own')
+            jobset['debriefing'] = debriefing
     if len({s['name'] for s in jobsets}) < len(jobsets):
         raise HTTPException(
             status_code=400, detail='jobset items must have unique names')
 
     for jobset in jobsets:
         db_jobset = JobSet(
-            codingjob=job, jobset=jobset['name'], codebook=jobset['codebook'])
+            codingjob=job, jobset=jobset['name'], codebook=jobset['codebook'], rules=jobset['rules'], debriefing=jobset['debriefing'])
         db.add(db_jobset)
         db.flush()
         db.refresh(db_jobset)
@@ -204,8 +212,8 @@ def get_annotations(db: Session, job_id: int):
         yield {"jobset": jobset.jobset, "unit_id": unit.external_id, "coder": user.email, "annotation": annotation.annotation, "status": annotation.status}
 
 
-def get_unit(db: Session, user: User, job: CodingJob, index: Optional[int]): 
-    u, index = unitserver.serve_unit(db, job, user, index=index)
+def get_unit(db: Session, user: User, jobset: JobSet, index: Optional[int]): 
+    u, index = unitserver.serve_unit(db, user, jobset, index=index)
     if u is None:
         if index is None:
             raise HTTPException(status_code=404)
@@ -213,7 +221,7 @@ def get_unit(db: Session, user: User, job: CodingJob, index: Optional[int]):
             return {'index': index}
 
     unit = {'id': u.id, 'unit': u.unit, 'index': index}
-    a = get_unit_annotations(db, u.id, user.id)
+    a = get_unit_annotation(db, jobset.codingjob_id, u.id, user.id)
     if a:
         unit['annotation'] = a.annotation
         unit['status'] = a.status
@@ -239,107 +247,112 @@ def get_unit(db: Session, user: User, job: CodingJob, index: Optional[int]):
     return unit
 
 
-def get_unit_annotations(db: Session, unit_id: int, coder_id: int):
-    return db.query(Annotation).filter(Annotation.unit_id == unit_id, Annotation.coder_id == coder_id).first()
+def get_unit_annotation(db: Session, codingjob_id: int, unit_id: int, coder_id: int):
+    return db.query(Annotation).filter(Annotation.codingjob_id == codingjob_id, Annotation.unit_id == unit_id, Annotation.coder_id == coder_id).first()
 
 
-def set_annotation(db: Session, unit: Unit, coder: User, annotation: list, status: str) -> list:
+def set_annotation(db: Session, ann: Annotation, annotation: list, status: str) -> list:
     """Create a new annotation or replace an existing annotation"""
     if status not in ['DONE', 'IN_PROGRESS']:
         raise HTTPException(status_code=400, detail={
                             "error": "Status has to be 'DONE' or 'IN_PROGRESS'"})
+   
 
-    jobuser = db.query(JobUser).filter(JobUser.codingjob_id ==
-                                       unit.codingjob_id, JobUser.user_id == coder.id).first()
+    # update annotation
+    ann.annotation = annotation
+    ann.modified = datetime.datetime.now()
+    ann.status = status
+        
+    unit = db.query(Unit).filter(Unit.id == ann.unit_id).first()
+    report = {"damage": {}, "evaluation": {}}
+    if unit.conditionals is not None:       
+        damage, evaluation = check_conditionals(unit, annotation)
 
-    ann = db.query(Annotation).filter(Annotation.unit_id ==
-                                      unit.id, Annotation.coder_id == coder.id).first()
-
-    damage, evaluation = check_conditionals(unit, annotation)
-    
-    # force a status based on conditionals results. Also, store certain reports actions
-    # in the annotation. These actions are then returned when the unit is served again.
-    for action in evaluation.values():
-        ca = action.get('action', None)
-        if ca in ['retry', 'block']:
-            status = 'RETRY'
-        if ca == 'block':
-            # here block entire job? could be usefull for screening (e.g., minimum age).
-            None
-
-    job = db.query(CodingJob.rules).filter(CodingJob.id == unit.codingjob_id).first()
-
-    if ann is None:
-        n_coded = db.query(Annotation).filter(
-            Annotation.jobset_id == jobuser.jobset_id, Annotation.coder_id == coder.id).count()
-        ann = Annotation(unit_id=unit.id, coder_id=coder.id, annotation=annotation, jobset_id=jobuser.jobset_id,
-                         status=status, damage=damage, unit_index=n_coded, report=report)
-        db.add(ann)
-    else:
-        ann.annotation = annotation
+        report['evaluation'] = evaluation
+        # force a status based on conditionals results. Also, store certain reports actions
+        # in the annotation. These actions are then returned when the unit is served again.
+        for action in evaluation.values():
+            ca = action.get('action', None)
+            if ca in ['retry', 'block']:
+                status = 'RETRY'
+            if ca == 'block':
+                # here block entire job? could be usefull for screening (e.g., minimum age).
+                None
         ann.status = status
-        ann.modified = datetime.datetime.now()
-        if job.rules is None or not job.rules.get('heal_damage', False):
-            damage = max(ann.damage, damage)
-        ann.damage = damage
+
+        # If damage changed, update the JobUser's total damage, and create a damage update.
+        # This damage update is returned to the client.
+        if ann.damage != damage:
+            jobset = get_jobset(db, coder, ann.codingjob_id)
+            if jobset.rules is None or not jobset.rules.get('heal_damage', False):
+                # the heal_damage rule determines whether damage can be healed if an annotator changes the annotation
+                damage = max(ann.damage, damage)
+            ann.damage = damage
+            total_damage = update_damage(db, ann.jobset_id, jobset, coder, unit)
+            report['damage'] = create_damage_report(damage, total_damage, jobset.rules)
+   
     db.flush()
     db.commit()
-
-    if damage > 0:
-        damage_report = process_damage(db, job, jobuser, coder, unit)
-    else:
-        damage_report = {}
-
-    return {"damage": damage_report, "evaluation": evaluation}
+ 
+    return report
 
 
-def process_damage(db: Session, job: CodingJob, jobuser: JobUser, coder: User, unit: Unit):
+def update_damage(db: Session, damage: float, jobset_id: int, unit_id: int, coder_id: int):
     """
     if job.rules has max_damage, also check total damage to determine if coder has to be disqualified from job.
     """
     # add damage for all the other units for this coder+jobset.
     # (don't include the current unit, because we then might count previous damage double) 
-    total_damage =  (db.query(func.sum(Annotation.damage))
-                       .filter(Annotation.jobset_id == jobuser.jobset_id, 
-                               Annotation.coder_id == coder.id).scalar())
+    other_damage = (db.query(func.sum(Annotation.damage))
+                      .filter(Annotation.jobset_id == jobset_id, 
+                              Annotation.unit_id != unit_id,
+                              Annotation.coder_id == coder_id).scalar())
+    total_damage = damage + other_damage
 
-    jobuser = db.query(JobUser).filter(JobUser.job_id = job.id, JobUser.user_id = coder.id).first()
+    jobuser = db.query(JobUser).filter(JobUser.jobset_id == jobset_id, JobUser.user_id == coder_id).first()
     jobuser.damage = total_damage
     db.flush()
     
-    create_damage_report(db, job, coder, jobuser)
+    return total_damage
 
 
-def create_damage_report(db: Session, job:CodingJob, coder: User, jobuser: JobUser):
+def create_damage_report(damage: float, total_damage: float, rules: dict):
     """
     get damage from jobuser tabel
     (so in process_damage, first update this table, then run this function)
     """
     damage_report = {}    
+    if rules is None: return damage_report
 
-    if jobuser is None: return damage_report
-    if job.rules is None: return damage_report
+    if rules.get('show_damage', False):
+        damage_report['damage'] = damage
+        damage_report['total_damage'] = total_damage
 
-    if job.rules.get('show_damage', False):
-        damage_report['damage'] = jobuser.damage
-
-    if 'max_damage' in job.rules:
-        if job.rules.get('show_damage', False):
-            damage_report['health'] = job.rules['max_damage']
-        if jobuser.damage > job.rules['max_damage']:
+    if 'max_damage' in rules:
+        if rules.get('show_damage', False):
+            damage_report['max_damage'] = rules['max_damage']
+        if total_damage > rules['max_damage']:
             damage_report['game_over'] = True    
 
     return damage_report
 
-def get_jobset(db: Session, job_id: int, user_id: int, assign_set: bool) -> JobUser:
+def get_jobset(db: Session, user: User, job_id: int) -> JobUser:
     jobuser = db.query(JobUser).filter(JobUser.codingjob_id ==
-                                       job_id, JobUser.user_id == user_id).first()
+                                       job_id, JobUser.user_id == user.id).first()
 
     if jobuser is not None:
         if jobuser.jobset_id is not None:
             # if there is a jobuser with a jobset assigned, we're good.
             return db.query(JobSet).filter(JobSet.codingjob_id == job_id, JobSet.id == jobuser.jobset_id).first()
+    
+    # If user is not yet a jobuser, check if allowed to be
+    if user.restricted_job is not None and user.restricted_job != job_id:
+        raise HTTPException(status_code=401, detail="User is only allowed to code job {restricted_job}".format(restricted_job=user.restricted_job))
+    job = db.query(CodingJob).filter(CodingJob.id == job_id).first()
+    if job.restricted:
+        raise HTTPException(status_code=401, detail="This is a restricted codingjob, and this coder doesn't have access")
 
+    # if user is allowed, pick a jobset
     jobsets = db.query(JobSet).filter(JobSet.codingjob_id == job_id)
     n_jobsets = jobsets.count()
     if n_jobsets == 1:
@@ -351,13 +364,12 @@ def get_jobset(db: Session, job_id: int, user_id: int, assign_set: bool) -> JobU
         next_jobset_index = current_users % n_jobsets
         jobset = jobsets[next_jobset_index]
 
-    if assign_set:
-        if jobuser is None:
-            jobuser = JobUser(
-                user_id=user_id, codingjob_id=job_id, jobset_id=jobset.id)
-            db.add(jobuser)
-        else:
-            jobuser.jobset_id = jobset.id
-        db.commit()
+    # assign jobset to user
+    if jobuser is None:
+        jobuser = JobUser(user_id=user.id, codingjob_id=job_id, jobset_id=jobset.id)
+        db.add(jobuser)
+    else:
+        jobuser.jobset_id = jobset.id
+    db.commit()
 
     return jobset

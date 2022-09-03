@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from annotinder.crud import crud_codingjob
 from annotinder.database import engine, get_db
-from annotinder.auth import auth_user, check_admin, get_jobtoken, check_job_user
+from annotinder.auth import auth_user, check_admin, get_jobtoken
 from annotinder.models import Unit, User, JobSetUnits
 from annotinder.crud.conditionals import check_conditionals
 
@@ -147,6 +147,7 @@ def get_job(job_id: int,
     Return a single coding job definition
     """
     check_admin(user)
+
     job = _job(db, job_id)
     units = crud_codingjob.get_units(db, job_id)
 
@@ -228,9 +229,7 @@ def get_codebook(job_id: int, user: User = Depends(auth_user), db: Session = Dep
     """
     Get the codebook for a specific job
     """
-    job = _job(db, job_id)
-    check_job_user(db, user, job)
-    jobset = _jobset(db, job_id, user.id, assign_set=True)
+    jobset = _jobset(db, user, job_id)
     return jobset.codebook
 
 
@@ -239,9 +238,8 @@ def get_progress(job_id, user: User = Depends(auth_user), db: Session = Depends(
     """
     Get a user's progress on a specific job.
     """
-    job = _job(db, job_id)
-    check_job_user(db, user, job)
-    progress = unitserver.get_progress_report(db, job, user)
+    jobset = _jobset(db, user, job_id)
+    progress = unitserver.get_progress_report(db, user, jobset)
     return progress
 
 
@@ -254,9 +252,8 @@ def get_unit(job_id,
     Retrieve a single unit to be coded.
     If ?index=i is specified, seek a specific unit. Otherwise, return the next unit to code
     """
-    job = _job(db, job_id)
-    check_job_user(db, user, job)
-    return crud_codingjob.get_unit(db, user, job, index)
+    jobset = _jobset(db, user, job_id)
+    return crud_codingjob.get_unit(db, user, jobset, index)
 
 
 @app_annotator_codingjob.post("/{job_id}/unit/{unit_id}/annotation", status_code=200)
@@ -277,8 +274,7 @@ def post_annotation(job_id: int,
     }
     """
     unit = db.query(Unit).filter(Unit.id == unit_id).first()
-    job = _job(db, job_id)
-    check_job_user(db, user, job)
+    jobset = _jobset(db, user, job_id)
     if not unit:
         raise HTTPException(status_code=404)
     if unit.codingjob_id != job_id:
@@ -286,7 +282,7 @@ def post_annotation(job_id: int,
     if not annotation:
         raise HTTPException(status_code=400)
     report = crud_codingjob.set_annotation(
-        db, unit=unit, coder=user, annotation=annotation, status=status)
+        db, unit=unit, coder=user, jobset=jobset, annotation=annotation, status=status)
     return report
 
 
@@ -307,18 +303,17 @@ def get_debriefing(job_id: int,
     """
     Get a list of all codingjobs
     """
-    job = _job(db, job_id)
-    check_job_user(db, user, job)
-    progress = unitserver.get_progress_report(db, job, user)
+    jobset = _jobset(db, user, job_id)
+    progress = unitserver.get_progress_report(db, user, jobset)
     if progress['n_coded'] != progress['n_total']:
         raise HTTPException(
             status_code=404, detail='Can only get debrief information once job is completed')
 
-    if job.debriefing is None:
+    if jobset.debriefing is None:
         return None
 
-    job.debriefing['user_id'] = re.sub('jobuser_[0-9]+_', '', user.email)
-    return job.debriefing
+    jobset.debriefing['user_id'] = re.sub('jobuser_[0-9]+_', '', user.email)
+    return jobset.debriefing
 
 
 # TODO

@@ -79,14 +79,14 @@ def verify_token(db: Session, token: str = Depends(oauth2_scheme)) -> Optional[U
 
 
 
-def check_job_user(db: Session, user: User, job: CodingJob):
-    if user.restricted_job is not None:
-        if user.restricted_job != job.id: 
-            raise HTTPException(status_code=401, detail="User not authorized to code job")
-    else:      
-        if job.restricted:
-            if not db.query(JobUser).filter(JobUser.user_id == user.id, JobUser.codingjob_id == job.id, JobUser.can_code == True).first():
-                raise HTTPException(status_code=401, detail="User not authorized to code job")
+# def check_job_user(db: Session, user: User, job: CodingJob):
+#     if user.restricted_job is not None:
+#         if user.restricted_job != job.id: 
+#             raise HTTPException(status_code=401, detail="User not authorized to code job")
+#     else:      
+#         if job.restricted:
+#             if not db.query(JobUser).filter(JobUser.user_id == user.id, JobUser.codingjob_id == job.id, JobUser.can_code == True).first():
+#                 raise HTTPException(status_code=401, detail="User not authorized to code job")
     
 
 def get_jobtoken(job: CodingJob) -> str:

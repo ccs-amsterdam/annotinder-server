@@ -21,13 +21,15 @@ def test_crowdcoding_next(job: int, user: User):
 
 def test_crowdcoding_next_leastcoded(job: int, user: User, admin_user: User, password_user: User):
     """Does crowdcoding favour units with fewer anotations?"""
-    jobset = get_jobset(job.id, admin_user, True)
+    jobuser = get_jobuser(job.id, user.id, True)
+    jobset = jobuser.jobset
     units = get_jobset_units(jobset)
     set_annotation(units[0], admin_user, {})
     u, index = get_next_unit(job, user)
     assert u == units[1]
 
-    jobset = get_jobset(job.id, password_user, True)
+    jobuser = get_jobuser(job.id, user.id, True)
+    jobset = jobuser.jobset
     units = get_jobset_units(jobset)
     set_annotation(units[0], password_user, {})
     set_annotation(units[1], password_user, {})
@@ -41,7 +43,8 @@ def test_progress(job: int, user: User):
     assert p['n_total'] == 2
     assert p['n_coded'] == 0
 
-    jobset = get_jobset(job.id, user, True)
+    jobuser = get_jobuser(job.id, user.id, True)
+    jobset = jobuser.jobset
     units = get_jobset_units(jobset)
     set_annotation(units[0], user, {})
     p = get_progress_report(job, user)
@@ -51,7 +54,8 @@ def test_progress(job: int, user: User):
 
 def test_seek_backwards(job: int, user: User):
     """Can we retrieve the first coded unit?"""
-    jobset = get_jobset(job.id, user, True)
+    jobuser = get_jobuser(job.id, user.id, True)
+    jobset = jobuser.jobset
     units = get_jobset_units(jobset)
     assert seek_unit(job, user, index=0) == None
     set_annotation(units[1], user, {})

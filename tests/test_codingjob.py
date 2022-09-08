@@ -17,7 +17,8 @@ def test_get_units(job: int):
 
 
 def test_annotate(job: int, user: User):
-    jobset = get_jobset(job.id, user.id, True)
+    jobuser = get_jobuser(job.id, user.id, True)
+    jobset = jobuser.jobset
     units = get_jobset_units(jobset)
     unit = units[0]
     a = set_annotation(unit, user, {"foo": "bar"})

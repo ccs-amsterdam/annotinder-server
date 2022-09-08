@@ -110,7 +110,7 @@ def check_conditionals(unit: Unit, annotation: dict, report_success=True) -> Tup
             evaluation[conditional['variable']]['correct'] = correctAnnotation
             evaluation[conditional['variable']]['incorrect'] = incorrectAnnotation
 
-        damage += conditional.get('damage', defaultDamage)
+            damage += conditional.get('damage', defaultDamage)
     return damage, evaluation
 
 

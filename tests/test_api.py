@@ -58,7 +58,8 @@ def test_get_next_unit(client, user, job):
 
 
 def test_seek_unit(client, user, job):
-    jobset = get_jobset(job.id, user.id, True)
+    jobuser = get_jobuser(job.id, user.id)
+    jobset = jobuser.jobset
     units = get_jobset_units(jobset)
     set_annotation(units[1], user, {"answer": 42})
     set_annotation(units[0], user, {})

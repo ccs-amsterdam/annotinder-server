@@ -13,9 +13,9 @@ def _job(db: Session, job_id: int) -> CodingJob:
     return job
 
 
-def _jobset(db: Session, user: User, job_id: int) -> JobSet:
-    jobset = crud_codingjob.get_jobset(db, user, job_id)
-    if not jobset:
+def _jobuser(db: Session, user: User, job_id: int) -> JobSet:
+    jobuser = crud_codingjob.get_jobuser(db, user, job_id)
+    if not jobuser:
         HTTPException(status_code=404)
-    return jobset
+    return jobuser
 

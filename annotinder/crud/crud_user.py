@@ -4,7 +4,7 @@ from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from annotinder.models import User, CodingJob, Annotation, JobUser, Unit
+from annotinder.models import User, CodingJob, JobSet, JobUser
 from annotinder import auth
 from annotinder import unitserver
 
@@ -92,8 +92,7 @@ def get_user_jobs(db: Session, user: User):
 
         jobuser = db.query(JobUser).filter(JobUser.codingjob_id == job.id, JobUser.user_id == user.id).first()
         if jobuser is not None:
-            jobset = db.query(JobSet).filter(JobSet.id == jobuser.jobset_id).first()
-            progress_report = unitserver.get_progress_report(db, user, jobset)
+            progress_report = unitserver.get_progress_report(db, jobuser)
             data["n_total"] = progress_report['n_total']
             data["n_coded"] = progress_report['n_coded']
             data["modified"] = progress_report['last_modified']

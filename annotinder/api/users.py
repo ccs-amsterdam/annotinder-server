@@ -3,13 +3,11 @@ from fastapi.params import Body, Depends, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
-from annotinder import unitserver
 from annotinder import models
 from annotinder.crud import crud_user
 from annotinder.database import engine, get_db
 from annotinder.auth import auth_user, check_admin, get_token
-from annotinder.models import Unit, User, Annotation
-
+from annotinder.models import User
 
 models.Base.metadata.create_all(bind=engine)
 

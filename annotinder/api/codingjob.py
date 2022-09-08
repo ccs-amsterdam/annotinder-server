@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Response
 from fastapi.params import Query, Body, Depends
 
 
-from annotinder.api.common import _job, _jobset
+from annotinder.api.common import _job, _jobuser
 from annotinder import unitserver
 
 from sqlalchemy.orm import Session
@@ -14,8 +14,7 @@ from sqlalchemy.orm import Session
 from annotinder.crud import crud_codingjob
 from annotinder.database import engine, get_db
 from annotinder.auth import auth_user, check_admin, get_jobtoken
-from annotinder.models import Unit, User, JobSetUnits
-from annotinder.crud.conditionals import check_conditionals
+from annotinder.models import User, JobSetUnit
 
 app_annotator_codingjob = APIRouter(
     prefix='/codingjob', tags=["annotator codingjob"])
@@ -32,52 +31,10 @@ def create_job(title: str = Body(None, description='The title of the codingjob')
                    None, description='A list of codingjob jobsets. An array of objects, with keys: name, codebook, unit_set'),
                authorization: dict = Body(
                    None, description='A dictionnary containing authorization settings'),
-               provenance: dict = Body(
-                   None, description='A dictionary containing any information about the units'),
                user: User = Depends(auth_user),
                db: Session = Depends(get_db)):
     """
-    Create a new codingjob. Body should be json structured as follows:
-
-     {
-      "title": <string>,
-      "codebook": {.. blob ..}, # required, but can be omitted if specified in every jobset
-      "units": [
-        {"id": <string>         # An id string. Needs to be unique within a codingjob (not necessarily across codingjobs)
-         "unit": {.. blob ..},
-         "conditionals": {.. blob ..},  # optional, include answering conditions
-        }
-        ..
-      ],
-      "rules": {
-        "ruleset": <string>,
-        "authorization": "open"|"restricted",  # optional, default: open
-        .. additional ruleset parameters ..
-      },
-      "debriefing": {
-        "message": <string>,
-        "link": <string> (url)
-      }
-      "jobsets": [        # optional
-        {"name": <string>,
-         "codebook": <codebook>,  ## optional
-         "unit_set": [<external_id>] ## optional
-         }
-      ]
-      "authorization": {  # optional, default: {'restricted': False}
-        restricted: boolean,
-        users: [emails]
-      },
-      "provenance": {.. blob ..},  # optional
-     }
-
-    Where ..blob.. indicates that this is not processed by the backend, so can be annotator specific.
-    See the annotator documentation for additional informations.
-
-    The rules distribute how units should be distributed, how to deal with quality control, etc.
-    The ruleset name specifies the class of rules to be used (currently "crowd" or "expert").
-    Depending on the ruleset, additional options can be given.
-    See the rules documentation for additional information
+    Create a new codingjob. 
     """
     check_admin(user)
     if not title or not codebook or not units or not rules:
@@ -85,7 +42,7 @@ def create_job(title: str = Body(None, description='The title of the codingjob')
             status_code=400, detail='Codingjob is missing keys')
 
     try:
-        job = crud_codingjob.create_codingjob(db, title=title, codebook=codebook, jobsets=jobsets, provenance=provenance,
+        job = crud_codingjob.create_codingjob(db, title=title, codebook=codebook, jobsets=jobsets,
                                               rules=rules, debriefing=debriefing, creator=user, units=units, authorization=authorization)
     except Exception as e:
         db.rollback()
@@ -179,8 +136,8 @@ def get_job_details(job_id: int, user: User = Depends(auth_user), db: Session = 
     js_details = []
     for js in job.jobsets:
         name = js.jobset
-        n_units = db.query(JobSetUnits).filter(
-            JobSetUnits.jobset_id == js.id).count()
+        n_units = db.query(JobSetUnit).filter(
+            JobSetUnit.jobset_id == js.id).count()
         js_details.append({"name": name, "n_units": n_units})
 
     data = {
@@ -229,8 +186,8 @@ def get_codebook(job_id: int, user: User = Depends(auth_user), db: Session = Dep
     """
     Get the codebook for a specific job
     """
-    jobset = _jobset(db, user, job_id)
-    return jobset.codebook
+    jobuser = _jobuser(db, user, job_id)
+    return jobuser.jobset.codebook
 
 
 @app_annotator_codingjob.get("/{job_id}/progress")
@@ -238,8 +195,8 @@ def get_progress(job_id, user: User = Depends(auth_user), db: Session = Depends(
     """
     Get a user's progress on a specific job.
     """
-    jobset = _jobset(db, user, job_id)
-    progress = unitserver.get_progress_report(db, user, jobset)
+    jobuser = _jobuser(db, user, job_id)
+    progress = unitserver.get_progress_report(db, jobuser)
     return progress
 
 
@@ -252,14 +209,14 @@ def get_unit(job_id,
     Retrieve a single unit to be coded.
     If ?index=i is specified, seek a specific unit. Otherwise, return the next unit to code
     """
-    jobset = _jobset(db, user, job_id)
-    return crud_codingjob.get_unit(db, user, jobset, index)
+    jobuser = _jobuser(db, user, job_id)
+    return crud_codingjob.get_unit(db, jobuser, index)
 
 
 @app_annotator_codingjob.post("/{job_id}/unit/{unit_id}/annotation", status_code=200)
 def post_annotation(job_id: int,
                     unit_id: int,
-                    user: User = Depends(auth_user),
+                    coder: User = Depends(auth_user),
                     annotation: list = Body(
                         None, description="An array of dictionary annotations"),
                     status: str = Body(
@@ -273,16 +230,15 @@ def post_annotation(job_id: int,
       "status": "DONE"|"IN_PROGRESS"
     }
     """
-    unit = db.query(Unit).filter(Unit.id == unit_id).first()
-    jobset = _jobset(db, user, job_id)
-    if not unit:
+    ann = crud_codingjob.get_unit_annotation(db, job_id, unit_id, coder.id)
+    if not ann:
         raise HTTPException(status_code=404)
-    if unit.codingjob_id != job_id:
+    if ann.codingjob_id != job_id:
         raise HTTPException(status_code=400)
     if not annotation:
         raise HTTPException(status_code=400)
     report = crud_codingjob.set_annotation(
-        db, unit=unit, coder=user, jobset=jobset, annotation=annotation, status=status)
+        db, ann=ann, coder=coder, annotation=annotation, status=status)
     return report
 
 
@@ -303,17 +259,18 @@ def get_debriefing(job_id: int,
     """
     Get a list of all codingjobs
     """
-    jobset = _jobset(db, user, job_id)
-    progress = unitserver.get_progress_report(db, user, jobset)
+    jobuser = _jobuser(db, user, job_id)
+    progress = unitserver.get_progress_report(db, jobuser)
     if progress['n_coded'] != progress['n_total']:
         raise HTTPException(
             status_code=404, detail='Can only get debrief information once job is completed')
 
-    if jobset.debriefing is None:
+    debriefing = jobuser.jobset.debriefing
+    if debriefing is None:
         return None
 
-    jobset.debriefing['user_id'] = re.sub('jobuser_[0-9]+_', '', user.email)
-    return jobset.debriefing
+    debriefing['user_id'] = re.sub('jobuser_[0-9]+_', '', user.email)
+    return debriefing
 
 
 # TODO

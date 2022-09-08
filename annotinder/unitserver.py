@@ -3,7 +3,7 @@ from typing import Optional, Tuple, List
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 
-from annotinder.models import Unit, User, Annotation, CodingJob, JobSetUnits, JobSet
+from annotinder.models import Unit, User, Annotation, CodingJob, JobSetUnit, JobSet, JobUser
 from annotinder.crud import crud_codingjob
 from annotinder.utils import random_indices
 
@@ -23,9 +23,9 @@ class UnitServer:
     - What Q/A measures are in place?
     """
 
-    def __init__(self, db: Session, coder: User, jobset: JobSet):
+    def __init__(self, db: Session, jobuser: JobUser, jobset: JobSet):
         self.db = db
-        self.coder = coder
+        self.jobuser = jobuser
         self.jobset = jobset
 
     def get_progress(self) -> dict:
@@ -37,15 +37,32 @@ class UnitServer:
         # might think this would be wise. The only case I can think of is having a coder do more units
         # beyond the set, but then there should be better ways that doing other (partially overlapping) sets.
 
-        last_modified = self.db.query(Annotation.modified, func.max(Annotation.modified)).filter(Annotation.coder_id == self.coder.id, Annotation.jobset_id == self.jobset.id).first()
-
-        return dict(
+        last_modified = self.db.query(Annotation.modified, func.max(Annotation.modified)).filter(Annotation.coder_id == self.jobuser.user_id, Annotation.jobset_id == self.jobset.id).first()
+        progress = dict(
             n_total=self.n_total(),
             n_coded=self.coded().count(),
             seek_backwards=self.can_seek_backwards,
             seek_forwards=self.can_seek_forwards,
             last_modified = last_modified.modified
         )
+        
+        damage = self.damage()
+        if self.jobset.rules.get('show_damage', False):
+            progress['damage'] = damage['damage']
+            progress['max_damage'] = damage['max_damage']
+            progress['damage'] = damage['game_over']
+        
+        return progress
+
+    def damage(self):
+        """
+        See current damage status
+        """
+        damage = self.jobuser.damage
+        max_damage = self.jobset.rules.get('max_damage')
+        game_over = max_damage is not None and damage >= max_damage 
+        return dict(damage=damage, max_damage=max_damage, game_over=game_over)
+        
 
     def seek_unit(self, index: int) -> Optional[Unit]:
         """
@@ -64,25 +81,12 @@ class UnitServer:
         """
         raise NotImplementedError()
 
-    def update_jobsetunits(self, unit: Unit):
-        """
-        After a jobset unit has been served, we keep track of some statistics, such as the number
-        of coders per unit. These can be used by rulesets to give priority to certain units (e.g.,
-        with fewer codings) and to block units (e.g., crowd coding units with sufficient coders / agreement).
-        Note that JobSetUnits.coders should always be set (using self.count_coders) because this is also used
-        to display progress 
-        """
-        jobsetunit = self.db.query(JobSetUnits).filter(JobSetUnits.jobset_id == self.jobset.id, JobSetUnits.unit_id == unit.id).first()
-        if jobsetunit is not None:
-            jobsetunit.coders = self.count_coders(unit)
-            self.db.commit()
-
     def get_unit_with_status(self, statuses: List[str]):
         """
         get first unit with a particular status
         """
         ann = self.db.query(Annotation.unit_id, Annotation.unit_index).join(JobSet).filter(
-            JobSet.codingjob_id == self.jobset.codingjob_id, Annotation.coder_id == self.coder.id, Annotation.status.in_(statuses)).first()
+            JobSet.codingjob_id == self.jobset.codingjob_id, Annotation.coder_id == self.jobuser.user_id, Annotation.status.in_(statuses)).first()
         if ann:
             return self.db.query(Unit).filter(Unit.id == ann.unit_id).first(), ann.unit_index
         return None, None
@@ -93,7 +97,7 @@ class UnitServer:
         Can only get units before the current unit if can_seek_backwards is True.
         """
         ann = self.db.query(Annotation.unit_id, Annotation.unit_index).join(JobSet).filter(
-            JobSet.codingjob_id == self.jobset.codingjob_id, Annotation.coder_id == self.coder.id, Annotation.unit_index == index).first()
+            JobSet.codingjob_id == self.jobset.codingjob_id, Annotation.coder_id == self.jobuser.user_id, Annotation.unit_index == index).first()
         if ann is None:
             return None
 
@@ -107,10 +111,10 @@ class UnitServer:
         Check if the current unit_index matches a unit with a fixed unit index (e.g., pre and post units).
         Checks both the exact index and negative index (-1 means show this unit last)
         """
-        unit = self.db.query(Unit).join(JobSetUnits).filter(JobSetUnits.jobset_id == self.jobset.id, JobSetUnits.fixed_index == unit_index).first()
+        unit = self.db.query(Unit).join(JobSetUnit).filter(JobSetUnit.jobset_id == self.jobset.id, JobSetUnit.fixed_index == unit_index).first()
         if not unit:
             n = self.n_total()
-            unit = self.db.query(Unit).join(JobSetUnits).filter(JobSetUnits.jobset_id == self.jobset.id, JobSetUnits.fixed_index == (unit_index-n)).first()
+            unit = self.db.query(Unit).join(JobSetUnit).filter(JobSetUnit.jobset_id == self.jobset.id, JobSetUnit.fixed_index == (unit_index-n)).first()
         return unit
 
 
@@ -130,19 +134,19 @@ class UnitServer:
         """
         Get all units in a job
         """
-        return self.db.query(Unit).join(JobSetUnits).filter(JobSetUnits.jobset_id == self.jobset.id).order_by(JobSetUnits.id)
+        return self.db.query(Unit).join(JobSetUnit).filter(JobSetUnit.jobset_id == self.jobset.id).order_by(JobSetUnit.id)
 
     def coded(self):
         """
         Get coded units for a given job and user
         """
-        return self.db.query(Annotation).join(JobSet).filter(JobSet.codingjob_id == self.jobset.codingjob_id, Annotation.coder_id == self.coder.id, Annotation.status != 'IN_PROGRESS')
+        return self.db.query(Annotation).join(JobSet).filter(JobSet.codingjob_id == self.jobset.codingjob_id, Annotation.coder_id == self.jobuser.user_id, Annotation.status != 'IN_PROGRESS')
 
     def started(self):
         """
         Get units that a user has already started in given job. 
         """
-        return self.db.query(Annotation).join(JobSet).filter(JobSet.codingjob_id == self.jobset.codingjob_id, Annotation.coder_id == self.coder.id)
+        return self.db.query(Annotation).join(JobSet).filter(JobSet.codingjob_id == self.jobset.codingjob_id, Annotation.coder_id == self.jobuser.user_id)
 
     def n_total(self):
         """
@@ -155,7 +159,7 @@ class UnitServer:
         """
         Get total number of coders working on this unit (including IN_PROGRESS). The +1 is for the current coder (which we exclude from the annotations)
         """
-        return 1 + self.db.query(Annotation.unit_id).filter(Annotation.coder_id != self.coder.id, Annotation.unit_id == unit.id, Annotation.jobset_id == self.jobset.id).count()
+        return 1 + self.db.query(Annotation.unit_id).filter(Annotation.coder_id != self.jobuser.user_id, Annotation.unit_id == unit.id, Annotation.jobset_id == self.jobset.id).count()
 
 
 
@@ -181,12 +185,12 @@ class FixedSet(UnitServer):
         # (1) If index is invalid, use get_next_unit
         if index < 0 or (index >= self.coded().count() and not self.can_seek_forwards):
             return self.get_next_unit()
-
+        
         # (2) try if index is an already started unit (taking can_seek_backwards into account)
         unit = self.get_started_unit(index)
         if unit is not None:
             return unit, index
-
+        
         # (3) the only other option is seeking forward
         if not self.can_seek_forwards:
             return None, index
@@ -209,7 +213,7 @@ class FixedSet(UnitServer):
             return None
         if 'randomize' in self.jobset.rules:
             # randomize using coder id as seed, so that each coder has a unique and fixed order
-            random_mapping = random_indices(self.coder.id, units.count())
+            random_mapping = random_indices(self.jobuser.id, units.count())
             index = random_mapping[index]
         return units[index]
 
@@ -238,10 +242,10 @@ class CrowdCoding(UnitServer):
 
         # (3) select a unit from the jobset that is uncoded by me, and least coded by anyone else in the same jobset
         least_coded = (
-            self.db.query(JobSetUnits.unit_id)
-            .outerjoin(Annotation, JobSetUnits.unit_id == Annotation.unit_id)
-            .filter(JobSetUnits.jobset_id == self.jobset.id, JobSetUnits.blocked == False, or_(Annotation.id == None, Annotation.coder_id != self.coder.id))
-            .group_by(JobSetUnits.unit_id)
+            self.db.query(JobSetUnit.unit_id)
+            .outerjoin(Annotation, JobSetUnit.unit_id == Annotation.unit_id)
+            .filter(JobSetUnit.jobset_id == self.jobset.id, JobSetUnit.blocked == False, or_(Annotation.id == None, Annotation.coder_id != self.jobuser.user_id))
+            .group_by(JobSetUnit.unit_id)
             .order_by(func.count(Annotation.id))
             .first()
         )
@@ -274,9 +278,9 @@ class CrowdCoding(UnitServer):
         n_units = self.units().count()
 
         n_units = (
-            self.db.query(JobSetUnits.unit_id)
-            .outerjoin(Annotation, JobSetUnits.unit_id == Annotation.unit_id)
-            .filter(JobSetUnits.jobset_id == self.jobset.id, or_(JobSetUnits.blocked == False, Annotation.coder_id != self.coder.id))
+            self.db.query(JobSetUnit.unit_id)
+            .outerjoin(Annotation, JobSetUnit.unit_id == Annotation.unit_id)
+            .filter(JobSetUnit.jobset_id == self.jobset.id, or_(JobSetUnit.blocked == False, Annotation.coder_id != self.jobuser.user_id))
             .count()
         )
         if 'units_per_coder' in self.jobset.rules:
@@ -284,29 +288,30 @@ class CrowdCoding(UnitServer):
         return n_units
 
 
-def get_unitserver(db: Session, coder: User, jobset: JobSet) -> UnitServer:
+def get_unitserver(db: Session, jobuser: JobUser) -> UnitServer:
+    jobset = jobuser.jobset
     unitserver_class = {
         'crowdcoding': CrowdCoding,
         'fixedset': FixedSet,
     }[jobset.rules['ruleset']]
-    return unitserver_class(db, coder, jobset)
+    return unitserver_class(db, jobuser, jobset)
 
 
-def serve_unit(db, coder: User, jobset: JobSet, index: Optional[int]) -> Optional[Unit]:
+def serve_unit(db, jobuser: JobUser, index: Optional[int]) -> Optional[Unit]:
     """Serve a unit from a jobset."""
-    unitserver = get_unitserver(db, coder, jobset)
+    unitserver = get_unitserver(db, jobuser)
+    damage = unitserver.damage()
+    if damage['game_over']:
+        return None, i
+    
     if index is not None:
         index = int(index)
         unit, i = unitserver.seek_unit(index)
     else:
         unit, i = unitserver.get_next_unit()
-    
-    if unit is not None: 
-        unitserver.update_jobsetunits(unit)
-
     return unit, i
 
 
-def get_progress_report(db, coder: User, jobset: JobSet) -> dict:
+def get_progress_report(db, jobset: JobSet) -> dict:
     """Return a progress report dictionary"""
-    return get_unitserver(db, coder, jobset).get_progress()
+    return get_unitserver(db, jobset).get_progress()

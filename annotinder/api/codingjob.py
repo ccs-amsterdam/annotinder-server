@@ -79,18 +79,18 @@ def set_job_settings(job_id: int,
 def set_job_users(job_id: int,
                   user: User = Depends(auth_user),
                   users: list = Body(
-                      None, description="An array of user emails"),
+                      None, description="An array of user names"),
                   only_add: bool = Body(
                       None, description="If True, only add the provided list of users, without removing existing users"),
                   db: Session = Depends(get_db)):
     """
     Sets the users that can code the codingjob (if the codingjob is restricted).
-    If body has an only_add argument with value True, the provided list of emails is only added, and current users that are not in this list are kept.
+    If body has an only_add argument with value True, the provided list of names is only added, and current users that are not in this list are kept.
     Returns an array with all users.
     """
     check_admin(user)
     crud_codingjob.set_job_coders(
-        db, codingjob_id=job_id, emails=users, only_add=only_add)
+        db, codingjob_id=job_id, names=users, only_add=only_add)
     return Response(status_code=204)
 
 
@@ -135,21 +135,19 @@ def get_job_details(job_id: int, user: User = Depends(auth_user), db: Session = 
 
     js_details = []
     for js in job.jobsets:
-        name = js.jobset
         n_units = db.query(JobSetUnit).filter(
             JobSetUnit.jobset_id == js.id).count()
-        js_details.append({"name": name, "n_units": n_units})
+        js_details.append({"name": js.jobset, "n_units": n_units, "rules": js.rules})
 
     data = {
         "id": job_id,
         "title": job.title,
         "jobset_details": js_details,
-        "rules": job.rules,
         "restricted": job.restricted,
         "created": job.created,
         "archived": job.archived,
         "n_total": n_total,
-        "users": [coder.email for coder in coders]
+        "users": [coder.name for coder in coders]
     }
 
     return data
@@ -269,10 +267,10 @@ def get_debriefing(job_id: int,
     if debriefing is None:
         return None
 
-    debriefing['user_id'] = re.sub('jobuser_[0-9]+_', '', user.email)
+    debriefing['user_id'] = re.sub('jobuser_[0-9]+_', '', user.name)
     return debriefing
 
 
 # TODO
-# - redeem_jobtoken moet user kunnen creeren vor een 'job token' (en email/id teruggeven) [untested]
+# - redeem_jobtoken moet user kunnen creeren vor een 'job token' (en name/id teruggeven) [untested]
 # - endpoint om 'job tokens' te kunnen aanmaken [untested]

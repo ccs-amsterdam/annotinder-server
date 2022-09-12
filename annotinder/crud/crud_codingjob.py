@@ -28,7 +28,7 @@ def create_codingjob(db: Session, title: str, codebook: dict, jobsets: list, rul
 
     add_units(db, job, units)
     add_jobsets(db, job=job, jobsets=jobsets, codebook=codebook, rules=rules, debriefing=debriefing)
-    set_job_coders(db, codingjob_id=job.id, emails=authorization.get('users', []))
+    set_job_coders(db, codingjob_id=job.id, names=authorization.get('users', []))
 
     # Only commits at this point, so create_codingjob can be wrapped in a try/except that rolls back changes on fail
     db.commit()
@@ -139,24 +139,24 @@ def get_job_coders(db, codingjob_id: int) -> Iterable[str]:
     return db.query(User).outerjoin(JobUser).filter(JobUser.codingjob_id == codingjob_id, JobUser.can_code == True)
 
 
-def set_job_coders(db: Session, codingjob_id: int, emails: Iterable[str], only_add: bool = False) -> Iterable[str]:
+def set_job_coders(db: Session, codingjob_id: int, names: Iterable[str], only_add: bool = False) -> Iterable[str]:
     """
     Sets the users that can code the codingjob (if the codingjob is restricted).
-    If only_add is True, the provided list of emails is only added, and current users that are not in this list are kept.
+    If only_add is True, the provided list of names is only added, and current users that are not in this list are kept.
     Returns an array with all users.
     """
-    if len(emails) == 0:
+    if len(names) == 0:
         return []
-    emails = set(emails)
+    names = set(names)
     existing_jobusers = get_job_coders(db, codingjob_id)
-    existing_emails = set([ju.email for ju in existing_jobusers])
+    existing_names = set([ju.name for ju in existing_jobusers])
 
-    for email in emails:
-        if email in existing_emails:
+    for name in names:
+        if name in existing_names:
             continue
-        user = db.query(User).filter(User.email == email).first()
+        user = db.query(User).filter(User.name == name).first()
         if not user:
-            user = User(email=email)
+            user = User(name=name)
             db.add(user)
             db.commit()
             db.refresh(user)
@@ -173,18 +173,18 @@ def set_job_coders(db: Session, codingjob_id: int, emails: Iterable[str], only_a
         db.refresh(jobuser)
 
     if only_add:
-        emails = emails.union(existing_emails)
+        names = names.union(existing_names)
     else:
-        rm_emails = existing_emails - emails
-        for rm_email in rm_emails:
-            user = db.query(User).filter(User.email == rm_email).first()
+        rm_names = existing_names - names
+        for rm_name in rm_names:
+            user = db.query(User).filter(User.name == rm_name).first()
             jobuser = db.query(JobUser).filter(
                 JobUser.user_id == user.id, JobUser.codingjob_id == codingjob_id).first()
             if jobuser is not None:
                 jobuser.can_code = False
         db.commit()
 
-    return list(emails)
+    return list(names)
 
 
 def get_units(db: Session, codingjob_id: int) -> Iterable[Unit]:
@@ -197,7 +197,7 @@ def get_jobs(db: Session) -> list:
     """
     jobs = db.query(CodingJob).all()
     data = [dict(id=job.id, title=job.title, created=job.created,
-                 archived=job.archived, creator=job.creator.email) for job in jobs]
+                 archived=job.archived, creator=job.creator.name) for job in jobs]
     data.sort(key=lambda x: x.get('created'), reverse=True)
     return data
 
@@ -206,7 +206,7 @@ def get_annotations(db: Session, job_id: int):
     ann_unit_coder = db.query(Annotation, Unit, User, JobSet).join(Unit).join(
         User).join(JobSet).filter(Unit.codingjob_id == job_id).all()
     for annotation, unit, user, jobset in ann_unit_coder:
-        yield {"jobset": jobset.jobset, "unit_id": unit.external_id, "coder": user.email, "annotation": annotation.annotation, "status": annotation.status}
+        yield {"jobset": jobset.jobset, "unit_id": unit.external_id, "coder": user.name, "annotation": annotation.annotation, "status": annotation.status}
 
 
 def get_unit(db: Session, jobuser: JobUser, index: Optional[int]): 

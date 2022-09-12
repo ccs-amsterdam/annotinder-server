@@ -39,7 +39,7 @@ def _get_token(payload: dict) -> str:
 
 
 def get_token(user: User) -> str:
-    t = _get_token(payload={'user': user.email})
+    t = _get_token(payload={'user': user.name})
     if not t:
         logging.warning('Could not create token')
         return None
@@ -71,7 +71,7 @@ def verify_token(db: Session, token: str = Depends(oauth2_scheme)) -> Optional[U
     if payload is None or 'user' not in payload:
         logging.warning("Invalid payload")
         return None
-    u = db.query(User).filter(User.email == payload['user']).first()
+    u = db.query(User).filter(User.name == payload['user']).first()
     if not u:
         logging.warning("User does not exist")
         return None

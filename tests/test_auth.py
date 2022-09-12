@@ -9,7 +9,7 @@ def test_token(user):
 
 
 def test_password(user):
-    assert not auth.verify_password(user.email, "test")
+    assert not auth.verify_password(user.name, "test")
     auth.change_password(user, "test")
-    assert auth.verify_password(user.email, "test")
+    assert auth.verify_password(user.name, "test")
     assert not auth.verify_password(user, "geen test")

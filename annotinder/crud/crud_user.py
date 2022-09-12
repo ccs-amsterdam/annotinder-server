@@ -13,7 +13,7 @@ SECRET_KEY = "not very secret, sorry"
 
 
 def verify_password(db: Session, username: str, password: str):
-    u = db.query(User).filter(User.email == username).first()
+    u = db.query(User).filter(User.name == username).first()
     if not u:
         logging.warning(f"User {username} does not exist")
         return None
@@ -28,12 +28,12 @@ def verify_password(db: Session, username: str, password: str):
 
 
 def create_user(db: Session, username: str, password: Optional[str] = None, admin: bool = False, restricted_job: Optional[CodingJob] = None) -> User:
-    u = db.query(User).filter(User.email == username).first()
+    u = db.query(User).filter(User.name == username).first()
     if u:
         logging.error(f"User {username} already exists!")
         return None
     hpassword = auth.hash_password(password) if password else None
-    db_user = User(email=username, is_admin=admin,
+    db_user = User(name=username, is_admin=admin,
                    password=hpassword, restricted_job=restricted_job)
     db.add(db_user)
     db.commit()
@@ -41,13 +41,13 @@ def create_user(db: Session, username: str, password: Optional[str] = None, admi
     return db_user
 
 
-def get_user(db: Session, email: str) -> User:
-    u = db.query(User).filter(User.email == email).first()
+def get_user(db: Session, name: str) -> User:
+    u = db.query(User).filter(User.name == name).first()
     return u
 
 
-def change_password(db: Session, email: str, password: str):
-    u = db.query(User).filter(User.email == email).first()
+def change_password(db: Session, name: str, password: str):
+    u = db.query(User).filter(User.name == name).first()
     if not u:
         logging.warning(f"User {u} does not exist")
     else:
@@ -64,7 +64,7 @@ def get_users(db: Session, offset: int, n: int) -> list:
     if offset is not None: users.offset(offset)
     if n is not None: users.limit(n)
     return {
-        "users": [{"id": u.id, "is_admin": u.is_admin, "email": u.email} for u in users.all()],
+        "users": [{"id": u.id, "is_admin": u.is_admin, "name": u.name} for u in users.all()],
         "total": total
     }
 
@@ -88,7 +88,7 @@ def get_user_jobs(db: Session, user: User):
         if job.archived:
             continue
         data = {"id": job.id, "title": job.title, "created": job.created,
-                "creator": job.creator.email, "archived": job.archived}
+                "creator": job.creator.name, "archived": job.archived}
 
         jobuser = db.query(JobUser).filter(JobUser.codingjob_id == job.id, JobUser.user_id == user.id).first()
         if jobuser is not None:

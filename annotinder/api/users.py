@@ -33,25 +33,25 @@ def verify_my_token(user: User = Depends(auth_user)):
     Verify a token, and get basic user information
     """
     return {"token": get_token(user),
-            "email": user.email,
+            "name": user.name,
             "is_admin": user.is_admin,
             "restricted_job": user.restricted_job}
 
 
-@app_annotator_users.get("/{email}/token")
-def get_user_token(email: str, user: User = Depends(auth_user), db: Session = Depends(get_db)):
+@app_annotator_users.get("/{name}/token")
+def get_user_token(name: str, user: User = Depends(auth_user), db: Session = Depends(get_db)):
     """
     Get the token for the given user
     """
     check_admin(user)
-    user = crud_user.get_user(db, email)
+    user = crud_user.get_user(db, name)
     if not user:
         raise HTTPException(status_code=404)
     return {"token": get_token(user)}
 
 
-@app_annotator_users.post("/{email}/password", status_code=204)
-def set_password(email: str,
+@app_annotator_users.post("/{name}/password", status_code=204)
+def set_password(name: str,
                  password: str = Body(None, description="The new password"),
                  user: User = Depends(auth_user),
                  db: Session = Depends(get_db)):
@@ -64,9 +64,9 @@ def set_password(email: str,
         raise HTTPException(status_code=400, detail={
                             "error": "Body needs to have password"})
 
-    if not (email == 'me' or email == user.email):
+    if not (name == 'me' or name == user.name):
         check_admin()
-    crud_user.change_password(db, email, password)
+    crud_user.change_password(db, name, password)
 
     return Response(status_code=204)
 
@@ -85,7 +85,7 @@ def get_users(offset: int = Query(None, description="Offset in User table"),
     
 
 @app_annotator_users.post("", status_code=204)
-def add_users(users: list = Body(None, description="An array of dictionaries with the keys: email, password, admin", embed=True),  # notice the embed, because users is (currently) only key in body
+def add_users(users: list = Body(None, description="An array of dictionaries with the keys: name, password, admin", embed=True),  # notice the embed, because users is (currently) only key in body
               user: User = Depends(auth_user),
               db: Session = Depends(get_db)):
     """
@@ -99,7 +99,7 @@ def add_users(users: list = Body(None, description="An array of dictionaries wit
 
     for user in users:
         crud_user.create_user(
-            db, user['email'], user['password'], user['admin'])
+            db, user['name'], user['password'], user['admin'])
     return Response(status_code=204)
 
 
@@ -107,7 +107,7 @@ def add_users(users: list = Body(None, description="An array of dictionaries wit
 def get_my_jobs(user: User = Depends(auth_user), db: Session = Depends(get_db)):
     """
     Get a list of coding jobs
-    Currently: email, is_admin, (active) jobs,
+    Currently: name, is_admin, (active) jobs,
     """
     jobs = crud_user.get_user_jobs(db, user)
     return {"jobs": jobs}

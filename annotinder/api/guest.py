@@ -30,11 +30,11 @@ def redeem_job_token(token: str = Query(None, description="A token for getting a
         n_users = db.query(User).count()
         x.update(str(n_users).encode('utf-8'))
         user_id = x.hexdigest()
-    email = f"jobuser__{job.id}__{user_id}"
-    user = crud_user.get_user(db, email)
+    name = f"jobuser__{job.id}__{user_id}"
+    user = crud_user.get_user(db, name)
     if not user:
-        user = crud_user.create_user(db, email, restricted_job=job.id)
+        user = crud_user.create_user(db, name, restricted_job=job.id)
     return {"token": get_token(user),
             "job_id": job.id,
-            "email": user.email,
+            "name": user.name,
             "is_admin": user.is_admin}

@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 
 class UserBase(BaseModel):
-    email: str
+    name: str
     is_admin: bool = False
     restricted_job: Optional[bool] = None
 

@@ -41,7 +41,7 @@ def admin_user():
 @pytest.fixture()
 def password_user():
     with get_test_db() as db:
-        u = crud_user.create_user(email="batman@example.com", password="secret")
+        u = crud_user.create_user(name="batman@example.com", password="secret")
         db.commit()
         db.refresh(u)
         yield u
@@ -52,7 +52,7 @@ def password_user():
 @pytest.fixture()
 def job():
     with get_test_db() as db:
-        u = crud_user.create_user(email="robin@example.com", password="secret", is_admin=True)
+        u = crud_user.create_user(name="robin@example.com", password="secret", is_admin=True)
         db.commit()
         db.refresh(u)
         job = crud_codingjob.create_codingjob(title="test", codebook=CODEBOOK, jobsets=None, provenance=PROVENANCE, units=UNITS, rules=RULES, creator=u)

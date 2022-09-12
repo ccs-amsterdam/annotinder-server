@@ -20,11 +20,11 @@ def run(args):
     uvicorn.run("annotinder.api:app", host="0.0.0.0", port=args.port, reload=not args.noreload)
     
 def _print_user(u: User):
-    print(json.dumps(dict(id=u.id, email=u.email, is_admin=u.is_admin, password=bool(u.password))))
+    print(json.dumps(dict(id=u.id, name=u.name, is_admin=u.is_admin, password=bool(u.password))))
 
 
 def get_token(args):
-    u = User.get_or_none(User.email == args.user)
+    u = User.get_or_none(User.name == args.user)
     if not u:
         logging.error(f"User {args.user} does not exist!")
         return
@@ -49,7 +49,7 @@ def check_token(args):
 
 
 def password(args):
-    u = User.get(User.email == args.user)
+    u = User.get(User.name == args.user)
     if args.setpassword:
         logging.info(f"Setting password for {args.user}")
         u.password = hash_password(args.password)
@@ -59,11 +59,6 @@ def password(args):
         ok = verify_password(args.password, u.password)
         print(f"Password {'matched' if ok else 'did not match'}")
 
-
-def email(s):
-    if not re.match(r".*@.*\.\w+", s):
-        raise ValueError(f"Cannot parse email {s}")
-    return s
 
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -75,11 +70,11 @@ p.add_argument("--no-reload", action='store_true', dest='noreload', help='Disabl
 p.set_defaults(func=run)
 
 p = subparsers.add_parser('get_token', help='Get token for a user')
-p.add_argument("user", type=email, help="Email address of the user")
+p.add_argument("user", help="username of the user")
 p.set_defaults(func=get_token)
 
 p = subparsers.add_parser('add_user', help='Create a new user')
-p.add_argument("user", type=email, help="Email address of the new user")
+p.add_argument("user", help="username of the new user")
 p.add_argument("--admin", action="store_true", help="Set user to admin (root / superuser)")
 p.add_argument("--password", help="Add a password for this user")
 p.set_defaults(func=add_user)
@@ -92,7 +87,7 @@ p.add_argument("token", help="Token to verify")
 p.set_defaults(func=check_token)
 
 p = subparsers.add_parser('password', help='Check or set a password')
-p.add_argument("user", type=email, help="User to login as")
+p.add_argument("user", help="User to login as")
 p.add_argument("password", help="Password")
 p.add_argument("--set", dest="setpassword", action="store_true", help="Set password")
 p.set_defaults(func=password)

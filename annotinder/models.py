@@ -27,7 +27,7 @@ class User(Base):
     __tablename__ = 'user'
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    email = Column(String, index=True)
+    name = Column(String, index=True)
     is_admin = Column(Boolean, default=False)
     restricted_job = Column(Integer, nullable=True)
     password = Column(String, nullable=True)

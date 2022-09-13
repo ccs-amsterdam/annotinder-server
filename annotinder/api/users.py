@@ -1,3 +1,5 @@
+import hashlib
+
 from fastapi import APIRouter, HTTPException, status, Response
 from fastapi.params import Body, Depends, Query
 from fastapi.security import OAuth2PasswordRequestForm
@@ -6,7 +8,7 @@ from sqlalchemy.orm import Session
 from annotinder import models
 from annotinder.crud import crud_user
 from annotinder.database import engine, get_db
-from annotinder.auth import auth_user, check_admin, get_token
+from annotinder.auth import verify_jobtoken, auth_user, check_admin, get_token
 from annotinder.models import User
 
 models.Base.metadata.create_all(bind=engine)
@@ -112,3 +114,29 @@ def get_my_jobs(user: User = Depends(auth_user), db: Session = Depends(get_db)):
     """
     jobs = crud_user.get_user_jobs(db, user)
     return {"jobs": jobs}
+
+
+@app_annotator_users.get("/jobtoken")
+def redeem_job_token(token: str = Query(None, description="A token for getting access to a specific coding job"),
+                     user_id: str = Query(None, description="Optional, a user ID"),
+                     db: Session = Depends(get_db)):
+    """
+    Convert a job token into a 'normal' token.
+    Should be called with a token and optional user_id argument
+    """
+    job = verify_jobtoken(db, token)
+    if not job:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Job token not valid")
+    if not user_id:
+        x = hashlib.sha1()
+        n_users = db.query(User).count()
+        x.update(str(n_users).encode('utf-8'))
+        user_id = x.hexdigest()
+    name = f"jobuser__{job.id}__{user_id}"
+    user = crud_user.get_user(db, name)
+    if not user:
+        user = crud_user.create_user(db, name, restricted_job=job.id)
+    return {"token": get_token(user),
+            "job_id": job.id,
+            "name": user.name,
+            "is_admin": user.is_admin}

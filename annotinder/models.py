@@ -31,6 +31,8 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     restricted_job = Column(Integer, nullable=True)
     password = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    can_contact = Column(Boolean, default=False)
 
     codingjobs = relationship("CodingJob", back_populates="creator")
 

@@ -18,3 +18,4 @@ def get_host_info(db: Session = Depends(get_db)):
     github = dict(client_id = os.getenv('GITHUB_CLIENT_ID'))
 
     return dict(oauthClients = dict(github=github))
+

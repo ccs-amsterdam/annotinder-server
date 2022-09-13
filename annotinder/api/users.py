@@ -14,6 +14,7 @@ models.Base.metadata.create_all(bind=engine)
 app_annotator_users = APIRouter(prefix="/users", tags=["annotator users"])
 
 
+
 @app_annotator_users.post("/me/token", status_code=200)
 def get_my_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     """

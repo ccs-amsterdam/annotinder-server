@@ -5,6 +5,7 @@ Annotinder Annotator Module API
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from annotinder.api.host import app_annotator_host
 from annotinder.api.users import app_annotator_users
 from annotinder.api.codingjob import app_annotator_codingjob
 from annotinder.api.guest import app_annotator_guest
@@ -14,12 +15,14 @@ app = FastAPI(
   title="annotinder",
   description=__doc__,
   openapi_tags=[
+    dict(name="annotator host", description="Endpoints for host server"),  
     dict(name="annotator users", description="Endpoints for user management"),
     dict(name="annotator codingjob", description="Endpoints for creating and managing codingjobs, and the core process of getting units and posting annotations"),
     dict(name="annotator guest", description="Endpoints for unregistered guests"),
   ]
 )
 
+app.include_router(app_annotator_host)
 app.include_router(app_annotator_users)
 app.include_router(app_annotator_codingjob)
 app.include_router(app_annotator_guest)

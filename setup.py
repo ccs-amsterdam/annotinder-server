@@ -18,6 +18,7 @@ setup(
         "Topic :: Text Processing",
     ],
     install_requires=[
+        'python-dotenv',
         'uvicorn[standard]',
         'python-multipart',
         "fastapi",

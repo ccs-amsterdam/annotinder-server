@@ -2,11 +2,14 @@
 Backend for CCS Annotator
 """
 
-import argparse, re
+import argparse, os, stat
 import json
 import logging
+import hashlib
+
 
 import uvicorn
+
 
 from annotinder.api import app
 
@@ -14,6 +17,30 @@ from annotinder.crud import crud_user
 from annotinder.models import User
 from annotinder.database import SessionLocal
 from annotinder.auth import get_token, verify_token, hash_password, verify_password
+
+ENV_TEMPLATE = """\
+# Config for sending emails. e.g., using Gmail (see readme)
+EMAIL_SMTP=smtp.gmail.com
+EMAIL_ADDRESS=
+EMAIL_PASSWORD=
+
+# Config for setting up GITHUB oauth2 login (see readme)
+GITHUB_CALLBACK_URL=https://annotinder.com
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+
+SECRET_KEY=${secret}
+"""
+
+def create_env(args):
+    if os.path.exists('.env'):
+        raise Exception('.env already exists')
+    env = ENV_TEMPLATE.format(secret=hashlib.sha256().hexdigest())
+    with open('.env', 'w') as f:
+        f.write(env)
+    os.chmod('.env', 0o600)
+    print('Created .env')
+
 
 def run(args):
     logging.info(f"Starting server at port {args.port}, reload={not args.noreload}")
@@ -48,12 +75,14 @@ def check_token(args):
     _print_user(u)
 
 
-def password(args):
-    u = User.get(User.name == args.user)
+def password(args):    
+    db = SessionLocal()
+    u = db.query(User).filter(User.name == args.user).first()
     if args.setpassword:
         logging.info(f"Setting password for {args.user}")
         u.password = hash_password(args.password)
-        u.save()
+        db.flush()
+        db.commit()
         _print_user(u)
     else:
         ok = verify_password(args.password, u.password)
@@ -68,6 +97,13 @@ p = subparsers.add_parser('run', help='Run the annotator in dev mode')
 p.add_argument("-p", '--port', help='Port', default=5000)
 p.add_argument("--no-reload", action='store_true', dest='noreload', help='Disable reload (when files change)')
 p.set_defaults(func=run)
+
+p = subparsers.add_parser('get_token', help='Get token for a user')
+p.add_argument("user", help="username of the user")
+p.set_defaults(func=get_token)
+
+p = subparsers.add_parser('create_env', help='Create the .env file with a random secret key')
+p.set_defaults(func=create_env)
 
 p = subparsers.add_parser('get_token', help='Get token for a user')
 p.add_argument("user", help="username of the user")

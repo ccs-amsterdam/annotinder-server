@@ -1,5 +1,7 @@
 import logging
 from typing import Optional
+from email_validator import validate_email, EmailNotValidError
+
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -8,14 +10,17 @@ from annotinder.models import User, CodingJob, JobSet, JobUser
 from annotinder import auth
 from annotinder import unitserver
 
+def safe_email(email: str):
+    try:
+        email = validate_email(email).email
+    except EmailNotValidError as e:
+         raise HTTPException(status_code=400, detail='{email} is not a valid email address'.format(email=email))
+    return email
 
-SECRET_KEY = "not very secret, sorry"
-
-
-def verify_password(db: Session, username: str, password: str):
-    u = db.query(User).filter(User.name == username).first()
+def verify_password(db: Session, email: str, password: str):
+    u = db.query(User).filter(User.email == email).first()
     if not u:
-        logging.warning(f"User {username} does not exist")
+        logging.warning(f"User {email} does not exist")
         return None
     elif not u.password:
         logging.warning(f"Password for {u} is missing")
@@ -27,13 +32,29 @@ def verify_password(db: Session, username: str, password: str):
         return u
 
 
-def create_user(db: Session, username: str, password: Optional[str] = None, admin: bool = False, restricted_job: Optional[CodingJob] = None) -> User:
-    u = db.query(User).filter(User.name == username).first()
+def create_guest_user(db: Session, user_id: str, restricted_job: Optional[CodingJob] = None) -> User:
+    """
+    Guest users only have access to one specific job, and can only login via the unique token generated on first login.
+    They cannot have admin privilidges and don't have an email address. 
+    """
+    db_user = User(name=user_id, is_admin=False,
+                   password=None, restricted_job=restricted_job)
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+def register_user(db: Session, username: str, email: str, password: Optional[str] = None, admin: bool = False, restricted_job: Optional[CodingJob] = None) -> User:
+    """
+    Registered users must have an email address
+    """
+    email = safe_email(email)
+    u = db.query(User).filter(User.email == email).first()
     if u:
-        logging.error(f"User {username} already exists!")
+        logging.error(f"User {email} already exists!")
         return None
     hpassword = auth.hash_password(password) if password else None
-    db_user = User(name=username, is_admin=admin,
+    db_user = User(name=username, email=email, is_admin=admin,
                    password=hpassword, restricted_job=restricted_job)
     db.add(db_user)
     db.commit()
@@ -41,15 +62,15 @@ def create_user(db: Session, username: str, password: Optional[str] = None, admi
     return db_user
 
 
-def get_user(db: Session, name: str) -> User:
-    u = db.query(User).filter(User.name == name).first()
+def get_user(db: Session, user_id: int) -> User:
+    u = db.query(User).filter(User.id == user_id).first()
     return u
 
 
-def change_password(db: Session, name: str, password: str):
-    u = db.query(User).filter(User.name == name).first()
+def change_password(db: Session, email: str, password: str):
+    u = db.query(User).filter(User.email == email).first()
     if not u:
-        logging.warning(f"User {u} does not exist")
+        logging.warning(f"User {u.email} does not exist")
     else:
         u.password = auth.hash_password(password)
         db.commit()
@@ -57,7 +78,7 @@ def change_password(db: Session, name: str, password: str):
 
 def get_users(db: Session, offset: int, n: int) -> list:
     """
-    Retrieve list of users (admin only)
+    Retrieve list of registered users (only to be used in admin endpoints)
     """
     users = db.query(User).filter(User.restricted_job == None).offset(offset)
     total = users.count()

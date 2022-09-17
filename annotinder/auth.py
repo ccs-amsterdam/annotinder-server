@@ -1,8 +1,10 @@
 import os
 import json
 import logging
+import math
 from typing import Optional
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
 
 from authlib.jose import JsonWebSignature
 import bcrypt
@@ -47,7 +49,7 @@ def _get_token(payload: dict) -> str:
 
 
 def get_token(user: User) -> str:
-    t = _get_token(payload={'user': user.name})
+    t = _get_token(payload={'user_id': user.id})
     if not t:
         logging.warning('Could not create token')
         return None
@@ -77,18 +79,23 @@ def verify_token(db: Session, token: str = Depends(oauth2_scheme)) -> Optional[U
     If the token is invalid, expired, or the user does not exist, returns None
     """
     payload = _verify_token(token)
-    if payload is None or 'user' not in payload:
+    if payload is None or 'user_id' not in payload:
         logging.warning("Invalid payload")
         return None
-    u = db.query(User).filter(User.name == payload['user']).first()
+    u = db.query(User).filter(User.id == payload['user_id']).first()
     if not u:
         logging.warning("User does not exist")
         return None
     return u
 
 
-def get_jobtoken(job: CodingJob) -> str:
-    return _get_token(payload={'job': job.id})
+def get_jobtoken(job: CodingJob, hours_valid: Optional[int]=None) -> str:
+    if hours_valid is None:
+        expires = None
+    else:
+        expires = datetime.now() + timedelta(hours=hours_valid)
+        expires = math.round(expires.timestamp())
+    return _get_token(payload={'job': job.id, 'expires': expires})
 
 
 def verify_jobtoken(db: Session, token: str) -> Optional[CodingJob]:
@@ -97,9 +104,14 @@ def verify_jobtoken(db: Session, token: str) -> Optional[CodingJob]:
     If the token is invalid, expired, or the user does not exist, returns None
     """
     payload = _verify_token(token)
-    if payload is None or 'job' not in payload:
+    if payload is None or 'job' not in payload or 'expires' not in payload:
         return None
+    if payload['expires'] is not None and payload['expires'] < datetime.now().timestamp():
+        return None
+
     return db.query(CodingJob).filter(CodingJob.id == payload['job']).first()
+
+
 
 
 

@@ -26,13 +26,16 @@ class JsonString(TypeDecorator):
 class User(Base):
     __tablename__ = 'user'
 
+    # users can be either registered or unregistered.
+    # the difference is indicated by having an email address
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     name = Column(String, index=True)
+    email = Column(String, index=True, unique=True)
     is_admin = Column(Boolean, default=False)
     restricted_job = Column(Integer, nullable=True)
     password = Column(String, nullable=True)
-    email = Column(String, nullable=True)
     can_contact = Column(Boolean, default=False)
+    tmp_login_secret = Column(JsonString, nullable=True)
 
     codingjobs = relationship("CodingJob", back_populates="creator")
 

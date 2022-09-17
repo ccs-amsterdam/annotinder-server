@@ -206,7 +206,7 @@ def get_annotations(db: Session, job_id: int):
     ann_unit_coder = db.query(Annotation, Unit, User, JobSet).join(Unit).join(
         User).join(JobSet).filter(Unit.codingjob_id == job_id).all()
     for annotation, unit, user, jobset in ann_unit_coder:
-        yield {"jobset": jobset.jobset, "unit_id": unit.external_id, "coder": user.name, "annotation": annotation.annotation, "status": annotation.status}
+        yield {"jobset": jobset.jobset, "unit_id": unit.external_id, "coder_id": user.id, "coder": user.name, "annotation": annotation.annotation, "status": annotation.status}
 
 
 def get_unit(db: Session, jobuser: JobUser, index: Optional[int]): 

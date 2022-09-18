@@ -14,6 +14,8 @@ from annotinder.database import engine, get_db
 from annotinder.auth import verify_jobtoken, auth_user, check_admin, get_token
 from annotinder.models import User
 
+from annotinder import mail
+
 models.Base.metadata.create_all(bind=engine)
 
 app_annotator_users = APIRouter(prefix="/users", tags=["annotator users"])
@@ -136,10 +138,11 @@ def request_magic_link(email: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="User doesn't exist")
     
-    if u.tmp_login_secret is not None:
-        if u.tmp_login_secret['expires'] < datetime.now().timestamp():
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Magic link already sent")
+    # if u.tmp_login_secret is not None:
+    #     five_min_ago = datetime.now() - timedelta(minutes=5)
+    #     if u.tmp_login_secret['expires'] > five_min_ago.timestamp():
+    #         raise HTTPException(status_code=404,
+    #                         detail="Magic link already sent")
     
     secret = "%06d" % random.randint(0,999999)
     expires_date = datetime.now() + timedelta(minutes=15)
@@ -147,7 +150,9 @@ def request_magic_link(email: str, db: Session = Depends(get_db)):
     u.tmp_login_secret = dict(secret=secret, expires=expires)
     db.commit()
 
+    mail.send_magic_link(u.name, u.email, secret)
+
     ## just for testing!! This should go via email
-    return dict(secret=secret, expires=expires)
+    ##return dict(secret=secret, expires=expires)
 
 

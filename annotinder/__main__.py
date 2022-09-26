@@ -60,9 +60,9 @@ def add_user(args):
 
 def password(args):    
     db = SessionLocal()
-    u = db.query(User).filter(User.name == args.user).first()
+    u = db.query(User).filter(User.email == args.email).first()
     if args.setpassword:
-        logging.info(f"Setting password for {args.user}")
+        logging.info(f"Setting password for {args.email}")
         u.password = hash_password(args.password)
         db.flush()
         db.commit()
@@ -70,6 +70,17 @@ def password(args):
     else:
         ok = verify_password(args.password, u.password)
         print(f"Password {'matched' if ok else 'did not match'}")
+
+def create_admin(args):
+    db = SessionLocal()
+    u = db.query(User).filter(User.email == args.email).first()
+    if not u:
+        logging.warning(f"User {args.email} does not exist")
+    u.is_admin = not args.disable
+    db.flush()
+    db.commit()
+    _print_user(u)
+
 
 
 
@@ -97,6 +108,11 @@ p.add_argument("email", help="email address of registered user")
 p.add_argument("password", help="Password")
 p.add_argument("--set", dest="setpassword", action="store_true", help="Set password")
 p.set_defaults(func=password)
+
+p = subparsers.add_parser('create_admin', help='Turn existing user into admin')
+p.add_argument("email", help="email address of registered user")
+p.add_argument("--disable", action='store_true', help="Disable this user as admin")
+p.set_defaults(func=create_admin)
 
 args = parser.parse_args()
 

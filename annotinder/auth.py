@@ -29,6 +29,7 @@ def secret_key():
         raise NotImplementedError('A .env file with a SECRET_KEY needs to be created. You can run: "python -m annotinder create_env"')
     return ENV_SECRET_KEY
 
+
 async def auth_user(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)) -> User:
     user = verify_token(db, token)
     if not user:
@@ -61,8 +62,9 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, db_password: str):  
+    if password is None or db_password is None: 
+        return False
     return bcrypt.checkpw(password.encode("utf-8"), db_password.encode("utf-8"))
-
 
 def _verify_token(token: str) -> Optional[dict]:
     try:

@@ -12,7 +12,7 @@ from annotinder import models
 from annotinder.crud import crud_user
 from annotinder.database import engine, get_db
 from annotinder.auth import verify_jobtoken, auth_user, check_admin, get_token
-from annotinder.models import User
+from annotinder.models import User, CodingJob
 
 from annotinder import mail
 
@@ -21,33 +21,55 @@ models.Base.metadata.create_all(bind=engine)
 app_annotator_users = APIRouter(prefix="/users", tags=["annotator users"])
 
 
-
-    
-
 @app_annotator_users.post("/me/token", status_code=200)
 def get_my_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     """
     Get a token via password login
     """
+    print(form_data)
+    u = crud_user.get_user_by_email(db, form_data.username)
+
+    if u.failed_logins >= 5:
+        time_since_block = datetime.now() - datetime.fromtimestamp(u.failed_login_timestamp)
+        minutes = math.floor(time_since_block.total_seconds() / 60)
+        if minutes < 15:
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                            detail="Too many failed login attempts. You can try again in {minutes} minutes".format(minutes=15-minutes))
+        u.failed_logins = 0   
+
     user = crud_user.verify_password(
         db, email=form_data.username, password=form_data.password)
     if not user:
+        u.failed_login_timestamp = math.floor(datetime.now().timestamp())
+        u.failed_logins = u.failed_logins + 1
+        db.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="Incorrect username or password")
     
+    u.failed_logins = 0
+    db.commit()
     return dict(token=get_token(user))
 
 
 @app_annotator_users.get("/me/login", status_code=200)
-def verify_my_token(user: User = Depends(auth_user)):
+def verify_my_token(db: Session = Depends(get_db), user: User = Depends(auth_user)):
     """
     Login verifies (and optionally refreshes?) the token and 
     provides some basic user details
     """
+    job = None
+    if user.restricted_job is not None:
+        print(user.restricted_job)
+        j = db.query(CodingJob).filter(CodingJob.id == user.restricted_job).first()
+        if j is not None:
+            job = j.title
+
     return {"token": get_token(user),
+            "email": user.email,
             "name": user.name,
             "is_admin": user.is_admin,
-            "restricted_job": user.restricted_job}
+            "restricted_job": user.restricted_job,
+            "restricted_job_label": job}
 
 
 @app_annotator_users.get("/{user_id}/token")
@@ -57,13 +79,11 @@ def get_user_token(user_id: int, user: User = Depends(auth_user), db: Session = 
     """
     check_admin(user)
     user = crud_user.get_user(db, user_id)
-    if not user:
-        raise HTTPException(status_code=404)
     return {"token": get_token(user)}
 
 
-@app_annotator_users.post("/{user_id}/password", status_code=204)
-def set_password(user_id: Union[str,int],
+@app_annotator_users.post("/{email}/password", status_code=204)
+def set_password(email: str,
                  password: str = Body(None, description="The new password"),
                  user: User = Depends(auth_user),
                  db: Session = Depends(get_db)):
@@ -76,11 +96,23 @@ def set_password(user_id: Union[str,int],
         raise HTTPException(status_code=400, detail={
                             "error": "Body needs to have password"})
 
-    if not (user_id == 'me' or user_id == user.id):
+    if not (email == 'me' or email == user.email):
         check_admin()
-    crud_user.change_password(db, user.id, password)
+    crud_user.change_password(db, email, password)
 
     return Response(status_code=204)
+
+@app_annotator_users.post("/{user_id}/admin", status_code=204)
+def create_admin(email: str,
+                 user: User = Depends(auth_user),
+                 db: Session = Depends(get_db)):
+    """
+    Turn an existing user into an admin
+    """
+    check_admin()
+    crud_user.create_admin(db, email)
+    return Response(status_code=204)
+
 
 
 @app_annotator_users.get("")
@@ -132,27 +164,20 @@ def request_magic_link(email: str, db: Session = Depends(get_db)):
     If the user doesn't have a password, immediately send a login link via email.
     If the user does have a password, return 
     """
-    email = crud_user.safe_email(email)
-    u = db.query(User).filter(User.email == email).first()
-    if u is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="User doesn't exist")
+    u = crud_user.get_user_by_email(db, email)
     
-    # if u.tmp_login_secret is not None:
-    #     five_min_ago = datetime.now() - timedelta(minutes=5)
-    #     if u.tmp_login_secret['expires'] > five_min_ago.timestamp():
-    #         raise HTTPException(status_code=404,
-    #                         detail="Magic link already sent")
+    if u.tmp_login_secret is not None:
+        minutes_ago = datetime.now() - timedelta(minutes=10)
+        if u.tmp_login_secret['expires'] > minutes_ago.timestamp():
+            raise HTTPException(status_code=429,
+                            detail="Can only send magic link once every 10 minutes")
     
     secret = "%06d" % random.randint(0,999999)
-    expires_date = datetime.now() + timedelta(minutes=15)
+    expires_date = datetime.now() + timedelta(minutes=20)
     expires = math.floor(expires_date.timestamp())
     u.tmp_login_secret = dict(secret=secret, expires=expires)
     db.commit()
 
     mail.send_magic_link(u.name, u.email, secret)
-
-    ## just for testing!! This should go via email
-    ##return dict(secret=secret, expires=expires)
 
 

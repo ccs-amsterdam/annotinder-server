@@ -25,7 +25,8 @@ setup(
         "sqlalchemy",
         "pydantic",
         'authlib',
-        'bcrypt'
+        'bcrypt',
+        'email_validator'
     ],
     extras_require={
         'dev': [

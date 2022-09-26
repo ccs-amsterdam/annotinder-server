@@ -28,7 +28,7 @@ def redeem_job_token(token: str = Query(None, description="A token for getting a
     if not job:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Job token not valid")
     
-    user = crud_user.create_user(db, user_id, restricted_job=job.id)
+    user = crud_user.create_guest_user(db, user_id, restricted_job=job.id)
     return {"token": get_token(user)}
 
 

@@ -2,6 +2,7 @@ import logging
 from typing import Optional
 from email_validator import validate_email, EmailNotValidError
 
+from fastapi import HTTPException, status
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -31,6 +32,13 @@ def verify_password(db: Session, email: str, password: str):
     else:
         return u
 
+
+def create_admin(db: Session, email: str, remove: False):
+    u = db.query(User).filter(User.email == email).first()
+    if not u:
+        logging.warning(f"User {email} does not exist")
+    u.is_admin = not remove
+    db.commit()
 
 def create_guest_user(db: Session, user_id: str, restricted_job: Optional[CodingJob] = None) -> User:
     """
@@ -64,8 +72,18 @@ def register_user(db: Session, username: str, email: str, password: Optional[str
 
 def get_user(db: Session, user_id: int) -> User:
     u = db.query(User).filter(User.id == user_id).first()
+    if u is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="User doesn't exist")
     return u
 
+def get_user_by_email(db: Session, email: str) -> User:
+    email = safe_email(email)
+    u = db.query(User).filter(User.email == email).first()
+    if u is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="User doesn't exist")
+    return u
 
 def change_password(db: Session, email: str, password: str):
     u = db.query(User).filter(User.email == email).first()

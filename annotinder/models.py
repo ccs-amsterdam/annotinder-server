@@ -8,7 +8,6 @@ from annotinder.database import Base
 
 class JsonString(TypeDecorator):
     """Enables JSON storage by encoding and decoding on the fly."""
-
     impl = String
     cache_ok = True
 
@@ -22,7 +21,6 @@ class JsonString(TypeDecorator):
             return None
         return json.loads(value)
 
-
 class User(Base):
     __tablename__ = 'user'
 
@@ -35,6 +33,8 @@ class User(Base):
     restricted_job = Column(Integer, nullable=True)
     password = Column(String, nullable=True)
     can_contact = Column(Boolean, default=False)
+    failed_logins = Column(Integer, default=0)
+    failed_login_timestamp =  Column(Integer, default=0)
     tmp_login_secret = Column(JsonString, nullable=True)
 
     codingjobs = relationship("CodingJob", back_populates="creator")

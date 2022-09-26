@@ -18,7 +18,6 @@ def send_email(to: str, subject: str, body: str) -> None:
     msg['Subject'] = subject
     msg['From'] = 'AnnoTinder <{email}>'.format(email=SENDER)
     msg['To'] = to
-    print(msg)
    
     with smtplib.SMTP_SSL(os.getenv('EMAIL_SMTP'), port=PORT, context=CTX) as server:
         #server.set_debuglevel(1)

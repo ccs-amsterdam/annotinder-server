@@ -31,15 +31,7 @@ magic_link_template = """\
         <br/>
         <div style="background: #eee; padding: 10px; border-radius: 10px;">
             <p>
-                Click on
-                <br/>
-                <a href="www.google.com">THIS LINK</a>
-            </p>
-            <h3 style="border-bottom: 1px solid black; line-height: 0.1em; margin: 30px 0 30px">
-                <span style="background: #eee; color: #777777;": padding: 0 20px;>OR</span>
-            </h3>
-            <p>
-                Use this code
+                Sign-in Secret
                 <br/>
                 <b style="color: #2185d0;">{secret}</b>
             </p>

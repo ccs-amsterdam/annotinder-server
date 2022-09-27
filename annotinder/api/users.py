@@ -182,3 +182,35 @@ def request_magic_link(email: str, db: Session = Depends(get_db)):
     mail.send_magic_link(u.name, u.email, secret)
 
 
+@app_annotator_users.get("/{email}/secret", status_code=200)
+def redeem_magic_link(email: str, 
+                      secret: int = Query(None, description="Secret send by magic link"), 
+                      password: str = Query(None, description="Optional password. If given, uses this as new password"), 
+                      db: Session = Depends(get_db)):
+    """
+    """
+    if secret is None:
+        raise HTTPException(status_code=404,
+                        detail="No secret provided")
+
+    u = crud_user.get_user_by_email(db, email)
+    if u is None:
+        raise HTTPException(status_code=404,
+                        detail="Invalid email address")
+    
+    if u.tmp_login_secret is None or int(u.tmp_login_secret['secret']) != secret:
+        raise HTTPException(status_code=401,
+                        detail="Invalid secret")
+    if u.tmp_login_secret['expires'] < datetime.now().timestamp():
+        raise HTTPException(status_code=401,
+                        detail="Secret has expired")
+
+    if password is not None:
+        crud_user.change_password(db, email, password)
+
+    ## We could disable the magic link after succesfull use. 
+    # u.tmp_login_secret = None
+    # db.commit()
+
+    return {"token": get_token(u)}
+

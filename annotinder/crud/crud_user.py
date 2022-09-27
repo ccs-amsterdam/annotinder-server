@@ -86,6 +86,9 @@ def get_user_by_email(db: Session, email: str) -> User:
     return u
 
 def change_password(db: Session, email: str, password: str):
+    # if len(password) < 8:
+    #     raise HTTPException(status_code=422,
+    #                         detail="Password needs to be at least 8 chars long")
     u = db.query(User).filter(User.email == email).first()
     if not u:
         logging.warning(f"User {u.email} does not exist")

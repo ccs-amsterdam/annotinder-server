@@ -65,6 +65,7 @@ def verify_my_token(db: Session = Depends(get_db), user: User = Depends(auth_use
             job = j.title
 
     return {"token": get_token(user),
+            "user_id": user.id,
             "email": user.email,
             "name": user.name,
             "is_admin": user.is_admin,

@@ -5,7 +5,7 @@ Backend for CCS Annotator
 import argparse, os, stat
 import json
 import logging
-import hashlib
+import secrets
 import uvicorn
 from email_validator import validate_email
 
@@ -39,7 +39,7 @@ def run(args):
 def create_env(args):
     if os.path.exists('.env'):
         raise Exception('.env already exists')
-    env = ENV_TEMPLATE.format(secret=hashlib.sha256().hexdigest())
+    env = ENV_TEMPLATE.format(secret=secrets.token_hex(nbytes=16))
     with open('.env', 'w') as f:
         f.write(env)
     os.chmod('.env', 0o600)

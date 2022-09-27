@@ -40,24 +40,6 @@ class User(Base):
     codingjobs = relationship("CodingJob", back_populates="creator")
 
 
-## !!!!!!!!!! 
-## Don't set restricted_job per user. Instead, add an auth_method column.
-## Jobs can specify who can see the job: everyone, registered, invited
-## Then when an unregistered user gets a jobtoken:
-## - If user doesn't exist, create it
-## - Add this user to 
-
-## For email, simply name@domain.com, becauses has to be unique
-## For Github, [github_id]@github
-## For invited users without user_id, name is 1@unregistered, 2@unregistered, etc.
-## For invited users with user_id, name is [user_id]@invited
-## For invited users with user_id included in token hash, name is [user_id]@secure_invited
-
-## when an invitation contains a user_id, immediately log in as this user.
-
-## Provide options to 
-
-
 class CodingJob(Base):
     __tablename__ = 'codingjob'
 

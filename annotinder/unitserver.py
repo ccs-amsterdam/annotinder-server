@@ -1,7 +1,7 @@
 from typing import Optional, Tuple, List
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, and_, desc
 
 from annotinder.models import Unit, User, Annotation, CodingJob, JobSetUnit, JobSet, JobUser
 from annotinder.crud import crud_codingjob
@@ -240,15 +240,30 @@ class CrowdCoding(UnitServer):
         if unit:
             return unit, unit_index
 
-        # (3) select a unit from the jobset that is uncoded by me, and least coded by anyone else in the same jobset
+        
+        # (3) select an uncoded (by user) unit, and taking into account how often the unit has been coded by others
+        uncoded_ids = (self.db.query(JobSetUnit.unit_id)
+                  .outerjoin(Annotation, and_(JobSetUnit.unit_id == Annotation.unit_id,
+                                              Annotation.coder_id == self.jobuser.user_id))
+                  .filter(JobSetUnit.jobset_id == self.jobset.id, JobSetUnit.blocked == False, Annotation.id == None)
+        )
         least_coded = (
             self.db.query(JobSetUnit.unit_id)
-            .outerjoin(Annotation, JobSetUnit.unit_id == Annotation.unit_id)
-            .filter(JobSetUnit.jobset_id == self.jobset.id, JobSetUnit.blocked == False, or_(Annotation.id == None, Annotation.coder_id != self.jobuser.user_id))
+            .outerjoin(Annotation, and_(
+                                   Annotation.jobset_id == self.jobset.id,
+                                   Annotation.unit_id == JobSetUnit.unit_id))
+            .filter(JobSetUnit.unit_id.in_(uncoded_ids))
             .group_by(JobSetUnit.unit_id)
-            .order_by(func.count(Annotation.id))
-            .first()
         )
+        # There are two 'crowd_priority' modes:
+        #    - 'coders_per_unit' priorizes getting many coders per unit, by first serving units that have been coded most
+        #    - 'number_of_units' priorizes coding many different units, but first serving units that have been coded least
+        priority = self.jobset.rules.get('crowd_priority', 'many_units')
+        if priority == 'coders_per_unit':
+            least_coded = least_coded.order_by(desc(func.count(Annotation.id))).first()
+        else:
+            least_coded = least_coded.order_by(func.count(Annotation.id)).first()
+
         if least_coded:
             return self.db.query(Unit).filter(Unit.id == least_coded.unit_id).first(), unit_index
 

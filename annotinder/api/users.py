@@ -26,7 +26,6 @@ def get_my_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session =
     """
     Get a token via password login
     """
-    print(form_data)
     u = crud_user.get_user_by_email(db, form_data.username)
 
     if u.failed_logins >= 5:
@@ -59,7 +58,6 @@ def verify_my_token(db: Session = Depends(get_db), user: User = Depends(auth_use
     """
     job = None
     if user.restricted_job is not None:
-        print(user.restricted_job)
         j = db.query(CodingJob).filter(CodingJob.id == user.restricted_job).first()
         if j is not None:
             job = j.title
@@ -142,9 +140,10 @@ def add_users(users: list = Body(None, description="An array of dictionaries wit
     if users is None:
         raise HTTPException(status_code=404, detail='Body needs to have users')
 
+    
     for user in users:
-        crud_user.register_user(
-            db, user['name'], user['email'], user['password'], user['admin'])
+        u = crud_user.register_user(
+            db, user['name'], user['email'], user.get('password', None), user.get('admin', False))
     return Response(status_code=204)
 
 

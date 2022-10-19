@@ -30,6 +30,8 @@ setup(
     ],
     extras_require={
         'dev': [
+            'pytest',
+            'requests',
             'gunicorn',
             'pytest',
             'codecov',

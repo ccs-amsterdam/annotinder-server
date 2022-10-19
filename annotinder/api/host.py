@@ -22,10 +22,8 @@ def get_host_info(db: Session = Depends(get_db), email: str = Query(None, descri
 
     if email is not None:
         u = db.query(User).filter(User.email == email).first()
-        print(u)
         if u:
             has_password = u.password is not None
             data['user'] = dict(email=email, admin=u.is_admin, has_password=has_password)
-    print(data)
     return data
 

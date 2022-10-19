@@ -25,11 +25,11 @@ def create_job(title: str = Body(None, description='The title of the codingjob')
                codebook: dict = Body(None, description='The codebook'),
                units: list = Body(None, description='The units'),
                rules: dict = Body(None, description='The rules'),
-               debriefing: dict = Body(
+               debriefing: Optional[dict] = Body(
                    None, description='Debriefing information'),
-               jobsets: list = Body(
+               jobsets: Optional[list] = Body(
                    None, description='A list of codingjob jobsets. An array of objects, with keys: name, codebook, unit_set'),
-               authorization: dict = Body(
+               authorization: Optional[dict] = Body(
                    None, description='A dictionnary containing authorization settings'),
                user: User = Depends(auth_user),
                db: Session = Depends(get_db)):
@@ -37,6 +37,7 @@ def create_job(title: str = Body(None, description='The title of the codingjob')
     Create a new codingjob. 
     """
     check_admin(user)
+
     if not title or not codebook or not units or not rules:
         raise HTTPException(
             status_code=400, detail='Codingjob is missing keys')
@@ -255,7 +256,9 @@ def get_debriefing(job_id: int,
                    user: User = Depends(auth_user),
                    db: Session = Depends(get_db)):
     """
-    Get a list of all codingjobs
+    Get the debriefing for a codingjob.
+    This is restricted to finished jobs, so that the debriefing can include things
+    like payment links.
     """
     jobuser = _jobuser(db, user, job_id)
     progress = unitserver.get_progress_report(db, jobuser)

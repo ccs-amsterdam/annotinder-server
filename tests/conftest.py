@@ -1,97 +1,53 @@
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, Session
 
-import annotinder
-from annotinder import auth, api
-from annotinder.database import get_test_db
-from annotinder.crud import crud_codingjob, crud_user
+from annotinder.api import app
+from annotinder.database import Base, get_db
+from annotinder.crud import crud_user
+from annotinder.auth import get_token
 
-UNITS = [{"id": 1, "unit": {"text": "unit1"}},
-         {"id": 2, "unit": {"text": "unit2"}, "gold": {"element": "au"}}]
-CODEBOOK = {"foo": "bar"}
-PROVENANCE = {"bar": "foo"}
-RULES = {"ruleset": "crowdcoding"}
+SQLALCHEMY_TESTDB_URL = 'sqlite:///./test.db'
 
-@pytest.fixture()
-def client():
-    return TestClient(api.app)
+engine = create_engine(
+  SQLALCHEMY_TESTDB_URL, connect_args={"check_same_thread": False}
+)
 
-@pytest.fixture()
-def user():
-    with get_test_db() as db:
-        u = crud_user.create_user(username = "user@example.com")
-        db.commit()
-        db.refresh(u)
-        yield u
-        db.delete(u)
-        db.commit()
+TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+def override_get_db():
+    try:
+        db = TestSessionLocal()
+        yield db
+    finally:
+        db.close()
 
-@pytest.fixture()
-def admin_user():
-    with get_test_db() as db:
-        u = crud_user.create_user(username = "admin@example.com", admin=True)
-        db.commit()
-        db.refresh(u)
-        yield u
-        db.delete(u)
-        db.commit()
+app.dependency_overrides[get_db] = override_get_db
 
+@pytest.fixture(scope='session', autouse=True)
+def db():
+    Base.metadata.create_all(bind=engine)
+    yield TestSessionLocal()
+    Base.metadata.drop_all(bind=engine)
 
-@pytest.fixture()
-def password_user():
-    with get_test_db() as db:
-        u = crud_user.create_user(name="batman@example.com", password="secret")
-        db.commit()
-        db.refresh(u)
-        yield u
-        db.delete(u)
-        db.commit()
+@pytest.fixture(scope='session')
+def coders(db):
+    coders = []
+    for i in range(0,3):
+        email = f"coder_{i}@test.com"
+        u = crud_user.register_user(db, username=email, email=email, 
+                                    password='supersecret', admin=False)
+        headers = {"Authorization": f"Bearer {get_token(u)}"}
+        coders.append(dict(headers = headers, user=u, password='testpassword'))
+    return coders
+    
+@pytest.fixture(scope='session')
+def admin(db):
+    u = crud_user.register_user(db, username="Admin user", 
+                                email='admin@test.com', password='supersecret', admin=True)
+    headers = {"Authorization": f"Bearer {get_token(u)}"}
+    return dict(headers = headers, user=u, password='testpassword') 
+    
 
-
-@pytest.fixture()
-def job():
-    with get_test_db() as db:
-        u = crud_user.create_user(name="robin@example.com", password="secret", is_admin=True)
-        db.commit()
-        db.refresh(u)
-        job = crud_codingjob.create_codingjob(title="test", codebook=CODEBOOK, jobsets=None, provenance=PROVENANCE, units=UNITS, rules=RULES, creator=u)
-        db.commit()
-        db.refresh(job)
-        yield job
-        db.delete(u)
-        db.delete(job)
-        db.commit()
-
-
-@pytest.fixture()
-def app():
-    return annotinder.app
-
-
-def build_headers(user=None, headers=None, password=None):
-    if not headers:
-        headers = {}
-    if user and password:
-        raise Exception("Sorry! We don't do that here")
-    elif user:
-        headers['Authorization'] = f"Bearer {auth.get_token(user)}"
-    return headers
-
-
-def get_json(client: TestClient, url, expected=200, headers=None, user=None, **kargs):
-    """Get the given URL. If expected is 2xx, return the result as parsed json"""
-    response = client.get(url, headers=build_headers(user, headers), **kargs)
-    assert response.status_code == expected, \
-        f"GET {url} returned {response.status_code}, expected {expected}, {response.json()}"
-    if expected // 100 == 2:
-        return response.json()
-
-
-def post_json(client: TestClient, url, expected=201, headers=None, user=None, **kargs):
-    response = client.post(url, headers=build_headers(user, headers), **kargs)
-    assert response.status_code == expected, f"POST {url} returned {response.status_code}, expected {expected}\n" \
-                                             f"{response.json()}"
-    if not expected == 204:
-        return response.json()
-
+client = TestClient(app)

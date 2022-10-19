@@ -35,7 +35,6 @@ def startup_event():
   if SECRET_KEY is None:
     raise NotImplementedError('A .env file with a SECRET_KEY needs to be created. You can run: "python -m annotinder create_env"')
 
-
 app.include_router(app_annotator_host)
 app.include_router(app_annotator_users)
 app.include_router(app_annotator_codingjob)

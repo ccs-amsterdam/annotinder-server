@@ -1,44 +1,37 @@
-from typing import List, Dict, Optional
+from msilib.schema import Condition
+from typing import List, Dict, Optional, Literal, Union
 from datetime import datetime
 from pydantic import BaseModel
 
-## currently not used
+## currently not used, but should at least specify the _in schemas
 
 
+class CodingJob(BaseModel):
+    units: List[Unit]
 
-class UserBase(BaseModel):
-    name: str
-    is_admin: bool = False
-    restricted_job: Optional[bool] = None
+class Unit(BaseModel):
+    type: Literal["code","train","test","survey"] = "code"
+    position: Literal["pre","post"] = None
+    id: str
+    unit: CodingUnit
+    conditionals: Conditionals
 
-class UserCreate(UserBase):
-    password: str
-    
-class User(UserBase):
-    id: int
-    
-    class Config:
-        orm_mode = True
+class CodingUnit(BaseModel):
+    text: str
 
+class Conditionals(BaseModel):
+    variable: str
+    conditions: Condition
+    onSuccess: Literal["applaud"] = None
+    onFail: Literal["retry","block"] = None
+    damage: float = None
+    message: str = None
 
-
-class CodingjobBase(BaseModel):
-    title: str
-    provenance: Dict = None
-    rules: Dict = None
-    debriefing: Dict = None
-    restricted: bool = False
-    
-class CodingjobCreate(CodingjobBase):
-    pass
-
-class Codingjob(CodingjobBase):
-    id: int
-    creator: User
-    created: datetime
-    archived: bool = False
-        
-    class Config:
-        orm_mode = True
-
-
+class Condition(BaseModel):
+    value: Union[str, float]
+    operator: Literal["==","<=","<",">=",">","!="] = None
+    field: str = None
+    offset: int = None
+    length: int = None
+    damage: float = None
+    submessage: str = None

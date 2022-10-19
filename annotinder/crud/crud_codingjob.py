@@ -263,7 +263,6 @@ def set_annotation(db: Session, ann: Annotation, coder: User, annotation: list, 
     report = {"damage": {}, "evaluation": {}}
     if ann.unit.conditionals is not None:       
         damage, evaluation = check_conditionals(ann.unit, annotation)
-        print(damage)
 
         report['evaluation'] = evaluation
         # force a status based on conditionals results. Also, store certain reports actions
@@ -280,8 +279,6 @@ def set_annotation(db: Session, ann: Annotation, coder: User, annotation: list, 
 
         # If damage changed, process the JobUser's total damage
         if ann.damage != damage:
-            print(ann.damage)
-            print('hey')
             jobuser = get_jobuser(db, coder, ann.codingjob_id)
             jobset = jobuser.jobset
             if not jobset.rules.get('heal_damage', False):

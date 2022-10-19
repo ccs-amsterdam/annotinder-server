@@ -9,8 +9,6 @@ import secrets
 import uvicorn
 from email_validator import validate_email
 
-from annotinder.api import app
-
 from annotinder.crud import crud_user
 from annotinder.models import User
 from annotinder.database import SessionLocal

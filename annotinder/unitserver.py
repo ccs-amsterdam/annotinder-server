@@ -111,7 +111,10 @@ class UnitServer:
         Check if the current unit_index matches a unit with a fixed unit index (e.g., pre and post units).
         Checks both the exact index and negative index (-1 means show this unit last)
         """
+        print('fixed index unit')
         unit = self.db.query(Unit).join(JobSetUnit).filter(JobSetUnit.jobset_id == self.jobset.id, JobSetUnit.fixed_index == unit_index).first()
+        print(self.db.query(JobSetUnit).filter(JobSetUnit.fixed_index != None).first())
+
         if not unit:
             n = self.n_total()
             unit = self.db.query(Unit).join(JobSetUnit).filter(JobSetUnit.jobset_id == self.jobset.id, JobSetUnit.fixed_index == (unit_index-n)).first()
@@ -177,8 +180,13 @@ class FixedSet(UnitServer):
         if unit:
             return unit, unit_index
 
-        # (2) select the next unit
+        # (2) Is there a fixed index unit?
         unit_index = self.started().count()
+        unit = self.get_fixed_index_unit(unit_index)
+        if unit:
+            return unit, unit_index
+
+        # (3) select the next unit
         return self.get_unit(unit_index), unit_index
 
     def seek_unit(self, index: int) -> Optional[Unit]:

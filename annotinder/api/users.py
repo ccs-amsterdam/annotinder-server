@@ -31,7 +31,8 @@ def get_my_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session =
     if u.failed_logins >= 5:
         time_since_block = datetime.now() - datetime.fromtimestamp(u.failed_login_timestamp)
         minutes = math.floor(time_since_block.total_seconds() / 60)
-        if minutes < 15:
+        ## !!!!!! minutes now set to 0 for testing. Set to 15 in production
+        if minutes < 0:
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                             detail="Too many failed login attempts. You can try again in {minutes} minutes".format(minutes=15-minutes))
         u.failed_logins = 0   
@@ -140,7 +141,7 @@ def add_users(users: list = Body(None, description="An array of dictionaries wit
     if users is None:
         raise HTTPException(status_code=404, detail='Body needs to have users')
 
-    
+
     for user in users:
         u = crud_user.register_user(
             db, user['name'], user['email'], user.get('password', None), user.get('admin', False))

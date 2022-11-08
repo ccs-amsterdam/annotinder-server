@@ -1,10 +1,9 @@
 import json
 from sqlalchemy import func, Boolean, Column, ForeignKey, Integer, String, Float, DateTime, ForeignKeyConstraint
 from sqlalchemy.types import TypeDecorator
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, sessionmaker
 
-from annotinder.database import Base
-
+from annotinder.database import Base, engine
 
 class JsonString(TypeDecorator):
     """Enables JSON storage by encoding and decoding on the fly."""
@@ -115,8 +114,6 @@ class JobUser(Base):
     jobset = relationship("JobSet", back_populates="jobusers")
 
 
-
-
 class Annotation(Base):
     __tablename__ = 'annotation'
 
@@ -134,3 +131,8 @@ class Annotation(Base):
     damage = Column(Float, default=0)
 
     unit = relationship('Unit', back_populates='annotation')
+
+
+## use these in __main__, because otherwise sqlalchemy 'sometimes' cannot create the tables in time...
+Base.metadata.create_all(bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

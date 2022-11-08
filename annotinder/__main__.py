@@ -2,7 +2,7 @@
 Backend for CCS Annotator
 """
 
-import argparse, os, stat
+import argparse, os, stat, time
 import json
 import logging
 import secrets
@@ -10,8 +10,7 @@ import uvicorn
 from email_validator import validate_email
 
 from annotinder.crud import crud_user
-from annotinder.models import User
-from annotinder.database import SessionLocal
+from annotinder.models import User, SessionLocal
 from annotinder.auth import get_token, verify_token, hash_password, verify_password
 
 ENV_TEMPLATE = """\
@@ -49,36 +48,35 @@ def _print_user(u: User):
 
 
 def add_user(args):
-    db = SessionLocal()
-    print(args.name) ## somehow, this is needed or the first time adding a user and creating the db wont work..... (f python)
-    email = validate_email(args.email).email
-    u = crud_user.register_user(db, args.name, email, args.password, args.admin)
-    if u:
-        _print_user(u)
+    with SessionLocal() as db:
+        email = validate_email(args.email).email
+        u = crud_user.register_user(db, args.name, email, args.password, args.admin)
+        if u:
+            _print_user(u)
 
 
 def password(args):    
-    db = SessionLocal()
-    u = db.query(User).filter(User.email == args.email).first()
-    if args.setpassword:
-        logging.info(f"Setting password for {args.email}")
-        u.password = hash_password(args.password)
+    with SessionLocal() as db:
+        u = db.query(User).filter(User.email == args.email).first()
+        if args.setpassword:
+            logging.info(f"Setting password for {args.email}")
+            u.password = hash_password(args.password)
+            db.flush()
+            db.commit()
+            _print_user(u)
+        else:
+            ok = verify_password(args.password, u.password)
+            print(f"Password {'matched' if ok else 'did not match'}")
+
+def create_admin(args):
+    with SessionLocal() as db:
+        u = db.query(User).filter(User.email == args.email).first()
+        if not u:
+            logging.warning(f"User {args.email} does not exist")
+        u.is_admin = not args.disable
         db.flush()
         db.commit()
         _print_user(u)
-    else:
-        ok = verify_password(args.password, u.password)
-        print(f"Password {'matched' if ok else 'did not match'}")
-
-def create_admin(args):
-    db = SessionLocal()
-    u = db.query(User).filter(User.email == args.email).first()
-    if not u:
-        logging.warning(f"User {args.email} does not exist")
-    u.is_admin = not args.disable
-    db.flush()
-    db.commit()
-    _print_user(u)
 
 
 

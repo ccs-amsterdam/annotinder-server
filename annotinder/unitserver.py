@@ -111,9 +111,7 @@ class UnitServer:
         Check if the current unit_index matches a unit with a fixed unit index (e.g., pre and post units).
         Checks both the exact index and negative index (-1 means show this unit last)
         """
-        print('fixed index unit')
         unit = self.db.query(Unit).join(JobSetUnit).filter(JobSetUnit.jobset_id == self.jobset.id, JobSetUnit.fixed_index == unit_index).first()
-        print(self.db.query(JobSetUnit).filter(JobSetUnit.fixed_index != None).first())
 
         if not unit:
             n = self.n_total()
@@ -217,9 +215,10 @@ class FixedSet(UnitServer):
 
     def get_unit(self, index: int):
         units = self.units()
+        
         if index < 0 or index >= units.count():
             return None
-        if 'randomize' in self.jobset.rules:
+        if self.jobset.rules.get('randomize', False):
             # randomize using coder id as seed, so that each coder has a unique and fixed order
             random_mapping = random_indices(self.jobuser.id, units.count())
             index = random_mapping[index]
@@ -332,6 +331,7 @@ def serve_unit(db, jobuser: JobUser, index: Optional[int]) -> Optional[Unit]:
         unit, i = unitserver.seek_unit(index)
     else:
         unit, i = unitserver.get_next_unit()
+    
     return unit, i
 
 

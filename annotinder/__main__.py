@@ -50,6 +50,7 @@ def _print_user(u: User):
 
 def add_user(args):
     db = SessionLocal()
+    print(args.name) ## somehow, this is needed or the first time adding a user and creating the db wont work..... (f python)
     email = validate_email(args.email).email
     u = crud_user.register_user(db, args.name, email, args.password, args.admin)
     if u:

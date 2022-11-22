@@ -38,7 +38,7 @@ def create_job(title: str = Body(None, description='The title of the codingjob')
     """
     check_admin(user)
 
-    if not title or not codebook or not units or not rules:
+    if not title or not units:
         raise HTTPException(
             status_code=400, detail='Codingjob is missing keys')
 

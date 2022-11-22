@@ -23,10 +23,12 @@ setup(
         'python-multipart',
         "fastapi",
         "sqlalchemy",
+        "sqlalchemy_utils",
+        "psycopg2-binary",
         "pydantic",
         'authlib',
         'bcrypt',
-        'email_validator'
+        'email_validator',
     ],
     extras_require={
         'dev': [

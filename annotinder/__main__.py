@@ -15,14 +15,18 @@ from annotinder.auth import get_token, verify_token, hash_password, verify_passw
 
 ENV_TEMPLATE = """\
 # Config for sending emails. e.g., using Gmail (see readme)
+# SUPERADMIN
+SUPERADMIN=
+
+# DB
+POSTGRES_HOST=localhost:5432
+POSTGRES_NAME=devuser
+POSTGRES_PASSWORD=devpw
+
+# EMAIL SERVER
 EMAIL_SMTP=smtp.gmail.com
 EMAIL_ADDRESS=
 EMAIL_PASSWORD=
-
-# Config for setting up GITHUB oauth2 login (see readme)
-GITHUB_CALLBACK_URL=https://annotinder.com
-GITHUB_CLIENT_ID=
-GITHUB_CLIENT_SECRET=
 
 SECRET_KEY=${secret}
 """

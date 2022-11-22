@@ -1,10 +1,11 @@
 import os
 from dotenv import load_dotenv
-from fastapi import APIRouter, HTTPException, status
-from fastapi.params import Query, Depends
+from fastapi import APIRouter, HTTPException, status, Response
+from fastapi.params import Query, Depends, Body
 from sqlalchemy.orm import Session
 from annotinder.database import engine, get_db
 from annotinder.models import User
+from annotinder.crud import crud_user
 
 load_dotenv()
 
@@ -27,3 +28,15 @@ def get_host_info(db: Session = Depends(get_db), email: str = Query(None, descri
             data['user'] = dict(email=email, admin=u.is_admin, has_password=has_password)
     return data
 
+@app_annotator_host.post("setup")
+def setup(email: str,
+          password: str = Body(None, description="The new password"),
+          db: Session = Depends(get_db)):
+    """
+    Onboarding. For now just creates the first admin.
+    """
+    users = db.query(User).count()
+    if users > 0:
+        raise HTTPException(status_code=404, detail="First admin already created")
+    crud_user.create_admin(db, email)
+    return Response(status_code=204)

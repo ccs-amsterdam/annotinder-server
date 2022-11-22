@@ -1,6 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy_utils import database_exists, create_database
 from sqlalchemy.orm import sessionmaker, Session
 
 from annotinder.api import app
@@ -8,11 +9,25 @@ from annotinder.database import Base, get_db
 from annotinder.crud import crud_user
 from annotinder.auth import get_token
 
-SQLALCHEMY_TESTDB_URL = 'sqlite:///./test.db'
+import os
+from dotenv import load_dotenv
+load_dotenv()
+DB_HOST = os.getenv('POSTGRES_HOST')
+DB_NAME = os.getenv('POSTGRES_NAME') 
+DB_PW = os.getenv('POSTGRES_PASSWORD') 
+
+#DATABASE_URL = "sqlite:///./annotinder.db"
+DATABASE_URL = f"postgresql://{DB_NAME}:{DB_PW}@{DB_HOST}/annotinder"
 
 engine = create_engine(
-  SQLALCHEMY_TESTDB_URL, connect_args={"check_same_thread": False}
+  DATABASE_URL, connect_args={}
 )
+
+if not database_exists(engine.url):
+    create_database(engine.url)
+else:
+    # Connect the database if exists.
+    engine.connect()
 
 TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

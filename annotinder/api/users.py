@@ -109,7 +109,7 @@ def create_admin(email: str,
     """
     Turn an existing user into an admin
     """
-    check_admin()
+    check_admin(user)
     crud_user.create_admin(db, email)
     return Response(status_code=204)
 

@@ -1,4 +1,3 @@
--e git+ssh://git@github.com/ccs-amsterdam/annotinder-server@42cb0460fa4dcaf20516462678e6bf53b606a0e1#egg=annotinder
 anyio==3.6.2
 attrs==22.1.0
 Authlib==1.1.0

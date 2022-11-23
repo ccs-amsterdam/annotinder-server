@@ -23,20 +23,20 @@ app_annotator_users = APIRouter(prefix="/users", tags=["annotator users"])
 
 
 ## test cookie
-@app_annotator_users.get("/me/check_cookie", status_code=200)
-def set_token(req: Request):
-    token = req.cookies.get('access-token')
-    print(token)
-    return "I has token"
+# @app_annotator_users.get("/me/check_cookie", status_code=200)
+# def set_token(req: Request):
+#     token = req.cookies.get('access-token')
+#     print(token)
+#     return "I has token"
 
-## make post
-@app_annotator_users.post("/me/set_token", status_code=303)
-def set_token(token: str = Body(None, description="MiddleCat Token"),
-              callback: str = Body(None, description='Callback url')):
-    response = RedirectResponse(callback, status_code=303)
-    response.set_cookie(key='access-token', value=token, httponly=True)
-    print('response!!')
-    return response
+# ## make post
+# @app_annotator_users.post("/me/set_token", status_code=303)
+# def set_token(token: str = Body(None, description="MiddleCat Token"),
+#               callback: str = Body(None, description='Callback url')):
+#     response = RedirectResponse(callback, status_code=303)
+#     response.set_cookie(key='access-token', value=token, httponly=True)
+#     print('response!!')
+#     return response
 
 
 @app_annotator_users.post("/me/token", status_code=200)

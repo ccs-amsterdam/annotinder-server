@@ -37,13 +37,17 @@ class UnitServer:
         # might think this would be wise. The only case I can think of is having a coder do more units
         # beyond the set, but then there should be better ways that doing other (partially overlapping) sets.
 
-        last_modified = self.db.query(Annotation.modified, func.max(Annotation.modified)).filter(Annotation.coder_id == self.jobuser.user_id, Annotation.jobset_id == self.jobset.id).first()
+        last_modified = (self.db.query(Annotation.modified, func.max(Annotation.modified))
+                         .filter(Annotation.coder_id == self.jobuser.user_id, Annotation.jobset_id == self.jobset.id)
+                         .group_by(Annotation.id)
+                         .first())
+        
         progress = dict(
             n_total=self.n_total(),
             n_coded=self.coded().count(),
             seek_backwards=self.can_seek_backwards,
             seek_forwards=self.can_seek_forwards,
-            last_modified = last_modified.modified
+            last_modified = last_modified.modified if last_modified is not None else None
         )
         
         damage = self.damage()

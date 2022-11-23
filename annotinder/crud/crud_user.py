@@ -101,7 +101,7 @@ def get_users(db: Session, offset: int, n: int) -> list:
     """
     Retrieve list of registered users (only to be used in admin endpoints)
     """
-    users = db.query(User).filter(User.restricted_job == None).offset(offset)
+    users = db.query(User).filter(User.restricted_job == None).order_by(User.id).offset(offset)
     total = users.count()
     if offset is not None: users.offset(offset)
     if n is not None: users.limit(n)
@@ -117,12 +117,12 @@ def get_user_jobs(db: Session, user: User):
     """
     if user.restricted_job is not None:
         jobs = db.query(CodingJob).filter(
-            CodingJob.id == user.restricted_job).all()
+            CodingJob.id == user.restricted_job).order_by(CodingJob.id).all()
     else:
         open_jobs = db.query(CodingJob).filter(
             CodingJob.restricted == False).all()
         restricted_jobs = db.query(CodingJob).join(JobUser).filter(
-            CodingJob.restricted == True, JobUser.user_id == user.id, JobUser.can_code == True).all()
+            CodingJob.restricted == True, JobUser.user_id == user.id, JobUser.can_code == True).order_by(CodingJob.id).all()
         jobs = open_jobs + restricted_jobs
 
     jobs_with_progress = []

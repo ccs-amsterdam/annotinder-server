@@ -100,9 +100,9 @@ def get_user_token(user_id: int, user: User = Depends(auth_user), db: Session = 
     return {"token": get_token(user)}
 
 
-@app_annotator_users.post("/{email}/password", status_code=204)
-def set_password(email: str,
-                 password: str = Body(None, description="The new password"),
+@app_annotator_users.post("/me/password", status_code=204)
+def set_password(password: str = Body(None, description="The new password"),
+                 email: str = Body('me', description="Email address of user for which to update password (admin only)"),
                  user: User = Depends(auth_user),
                  db: Session = Depends(get_db)):
     """

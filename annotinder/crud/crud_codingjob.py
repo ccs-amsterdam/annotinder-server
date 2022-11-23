@@ -105,8 +105,10 @@ def prepare_unit_sets(db, jobset, position, job, db_jobset):
         ids_key = position + '_ids'
     if ids_key not in jobset or jobset[ids_key] is None:
         # if no id set is specified, use all units of this type
-        units = db.query(Unit.external_id).filter(
-            Unit.codingjob_id == job.id, Unit.position == position).all()
+        units = (db.query(Unit.external_id)
+            .filter(Unit.codingjob_id == job.id, Unit.position == position)
+            .order_by(Unit.id)
+            .all())
         ids = [u.external_id for u in units]
     else:
         ids = jobset[ids_key]
@@ -188,14 +190,14 @@ def set_job_coders(db: Session, codingjob_id: int, names: Iterable[str], only_ad
 
 
 def get_units(db: Session, codingjob_id: int) -> Iterable[Unit]:
-    return db.query(Unit).filter(Unit.codingjob_id == codingjob_id)
+    return db.query(Unit).filter(Unit.codingjob_id == codingjob_id).order_by(Unit.id)
 
 
 def get_jobs(db: Session) -> list:
     """
     Retrieve all jobs. Only basic meta data. 
     """
-    jobs = db.query(CodingJob).all()
+    jobs = db.query(CodingJob).order_by(CodingJob.id).all()
     data = [dict(id=job.id, title=job.title, created=job.created,
                  archived=job.archived, creator=job.creator.name) for job in jobs]
     data.sort(key=lambda x: x.get('created'), reverse=True)
@@ -203,8 +205,12 @@ def get_jobs(db: Session) -> list:
 
 
 def get_annotations(db: Session, job_id: int):
-    ann_unit_coder = db.query(Annotation, Unit, User, JobSet).join(Unit).join(
-        User).join(JobSet).filter(Unit.codingjob_id == job_id).all()
+    ann_unit_coder = (db.query(Annotation, Unit, User, JobSet).join(Unit)
+                     .join(User)
+                     .join(JobSet)
+                     .filter(Unit.codingjob_id == job_id)
+                     .order_by(Annotation.id)
+                     .all())
     for annotation, unit, user, jobset in ann_unit_coder:
         yield {"jobset": jobset.jobset, "unit_id": unit.external_id, "coder_id": user.id, "coder": user.name, "annotation": annotation.annotation, "status": annotation.status}
 
@@ -245,7 +251,10 @@ def get_unit(db: Session, jobuser: JobUser, index: Optional[int]):
 
 
 def get_unit_annotation(db: Session, codingjob_id: int, unit_id: int, coder_id: int):
-    return db.query(Annotation).filter(Annotation.codingjob_id == codingjob_id, Annotation.unit_id == unit_id, Annotation.coder_id == coder_id).first()
+    return (db.query(Annotation)
+            .filter(Annotation.codingjob_id == codingjob_id, Annotation.unit_id == unit_id, Annotation.coder_id == coder_id)
+            .order_by(Annotation.id)
+            .first())
 
 
 def set_annotation(db: Session, ann: Annotation, coder: User, annotation: list, status: str) -> list:
@@ -259,7 +268,6 @@ def set_annotation(db: Session, ann: Annotation, coder: User, annotation: list, 
     ann.modified = datetime.datetime.now()
     ann.status = status
         
-    #unit = db.query(Unit).filter(Unit.id == ann.unit_id).first()
     report = {"damage": {}, "evaluation": {}}
     if ann.unit.conditionals is not None:       
         damage, evaluation = check_conditionals(ann.unit, annotation)
@@ -343,7 +351,7 @@ def get_jobuser(db: Session, user: User, job_id: int) -> Tuple[JobSet, JobUser]:
         raise HTTPException(status_code=401, detail="This is a restricted codingjob, and this coder doesn't have access")
 
     # if user is allowed, pick a jobset
-    jobsets = db.query(JobSet).filter(JobSet.codingjob_id == job_id)
+    jobsets = db.query(JobSet).filter(JobSet.codingjob_id == job_id).order_by(JobSet.id)
     n_jobsets = jobsets.count()
     if n_jobsets == 1:
         jobset = jobsets[0]

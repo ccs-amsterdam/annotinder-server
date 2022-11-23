@@ -89,8 +89,10 @@ class UnitServer:
         """
         get first unit with a particular status
         """
-        ann = self.db.query(Annotation.unit_id, Annotation.unit_index).join(JobSet).filter(
-            JobSet.codingjob_id == self.jobset.codingjob_id, Annotation.coder_id == self.jobuser.user_id, Annotation.status.in_(statuses)).first()
+        ann = (self.db.query(Annotation.unit_id, Annotation.unit_index).join(JobSet)
+               .filter(JobSet.codingjob_id == self.jobset.codingjob_id, Annotation.coder_id == self.jobuser.user_id, Annotation.status.in_(statuses))
+               .order_by(JobSet.id)
+               .first())
         if ann:
             return self.db.query(Unit).filter(Unit.id == ann.unit_id).first(), ann.unit_index
         return None, None
@@ -100,8 +102,10 @@ class UnitServer:
         Get a unit that has already been started by its index. 
         Can only get units before the current unit if can_seek_backwards is True.
         """
-        ann = self.db.query(Annotation.unit_id, Annotation.unit_index).join(JobSet).filter(
-            JobSet.codingjob_id == self.jobset.codingjob_id, Annotation.coder_id == self.jobuser.user_id, Annotation.unit_index == index).first()
+        ann = (self.db.query(Annotation.unit_id, Annotation.unit_index).join(JobSet)
+               .filter(JobSet.codingjob_id == self.jobset.codingjob_id, Annotation.coder_id == self.jobuser.user_id, Annotation.unit_index == index)
+               .order_by(JobSet.id)
+               .first())
         if ann is None:
             return None
 
@@ -116,7 +120,7 @@ class UnitServer:
         Checks both the exact index and negative index (-1 means show this unit last)
         """
         unit = self.db.query(Unit).join(JobSetUnit).filter(JobSetUnit.jobset_id == self.jobset.id, JobSetUnit.fixed_index == unit_index).first()
-
+       
         if not unit:
             n = self.n_total()
             unit = self.db.query(Unit).join(JobSetUnit).filter(JobSetUnit.jobset_id == self.jobset.id, JobSetUnit.fixed_index == (unit_index-n)).first()
@@ -145,13 +149,17 @@ class UnitServer:
         """
         Get coded units for a given job and user
         """
-        return self.db.query(Annotation).join(JobSet).filter(JobSet.codingjob_id == self.jobset.codingjob_id, Annotation.coder_id == self.jobuser.user_id, Annotation.status != 'IN_PROGRESS')
+        return (self.db.query(Annotation).join(JobSet)
+                .filter(JobSet.codingjob_id == self.jobset.codingjob_id, Annotation.coder_id == self.jobuser.user_id, Annotation.status != 'IN_PROGRESS')
+                .order_by(JobSet.id))
 
     def started(self):
         """
         Get units that a user has already started in given job. 
         """
-        return self.db.query(Annotation).join(JobSet).filter(JobSet.codingjob_id == self.jobset.codingjob_id, Annotation.coder_id == self.jobuser.user_id)
+        return (self.db.query(Annotation).join(JobSet)
+                .filter(JobSet.codingjob_id == self.jobset.codingjob_id, Annotation.coder_id == self.jobuser.user_id)
+                .order_by(JobSet.id))
 
     def n_total(self):
         """

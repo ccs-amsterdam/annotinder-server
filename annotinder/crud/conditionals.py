@@ -3,19 +3,19 @@ from sqlalchemy import true
 from annotinder.models import Unit, Annotation
 
 
-def default_conditionals(type: str) -> Tuple[str, str, str, float]:
+def default_conditionals(unit_type: str) -> Tuple[str, str, str, float]:
     successAction = None
     failAction = None
     message = None
     damage = 0
-    if type == 'train':
+    if unit_type == 'train':
         successAction = "applaud"
         failAction = "retry"
         message = "### Please retry.\n\nThis is a **training** unit, and the answer you gave was incorrect. \nPlease have another look, and select a different answer"
-    if type == 'pre':
+    if unit_type == 'screen':
         failAction = "block"
         message = "### Thank you for participating.\n\nBased on your answer for this question we determined that you do not meet the qualifications for this coding job.\nWe sincerely thank you for your time."
-    if type == 'test':
+    if unit_type == 'test':
         damage = 10
     return successAction, failAction, message, damage
 
@@ -116,7 +116,10 @@ def check_conditionals(unit: Unit, annotation: dict, report_success=True) -> Tup
 
 def invalid_conditionals(unit: Unit, codebook: dict) -> List:
     """
-    Check conditionals, and return an array of variable names for which the conditional failed
+    Check if conditionals are possible given the unit and codebook.
+    This check is performed when uploading a codingjob, to prevent deploying
+    jobs where coders can get stuck due to impossible conditionals.
+    Return an array of variable names for which the conditional failed
     """
     invalid_variables = []
 
@@ -227,16 +230,28 @@ def value_is_possible(conditions, values):
 
 def position_is_possible(conditions, unit):
     """
-    If a condition contains a position (field, offset and length), check
-    if this position is even possible given the unit text
+    If a condition contains a field or position (field + offset + length), check
+    if this is even possible given the unit text
     """
     for condition in conditions:
-        if not all(k in condition for k in ['field', 'offset', 'length']):
+        if not 'field' in condition:
             continue
         has_match = False
+
         for text_field in unit.unit.get('text_fields', []):
-            if condition['field'] == text_field['name']:
+            #fieldname_subfield = condition['field'].split('.')
+            if condition['field'] != text_field['name']:
+                continue
+            #if len(fieldname_subfield) == 1:
+                ## 
+                ## if condition a subfield (e.g., field.3), see if number in subfield
+                ## is lte the number of subfields (text_value['value'])
+            #    if int(fieldname_subfield[1]) > len(text_field["value"]  
+            #if '.' in condition
+                
+            if not 'offset' in condition:
                 has_match = True
+                continue    
 
             offset = text_field.get('offset', 0)
             first_char = offset + \
@@ -247,9 +262,18 @@ def position_is_possible(conditions, unit):
             if condition['offset'] >= first_char:
                 if condition['offset'] + condition['length'] <= last_char:
                     has_match = True
+
+
+
+        other_fields = unit.unit.get('image_fields', []) +  unit.unit.get('markdown_fields', [])
+        for field in other_fields:
+            if condition['field'] != field['name']:
+                has_match = True
+             
         if not has_match:
             return False
     return True
+
 
 
 def get_condition_value(condition: dict) -> Union[str, float]:

@@ -273,7 +273,3 @@ def get_debriefing(job_id: int,
     debriefing['user_id'] = re.sub('jobuser_[0-9]+_', '', user.name)
     return debriefing
 
-
-# TODO
-# - redeem_jobtoken moet user kunnen creeren vor een 'job token' (en name/id teruggeven) [untested]
-# - endpoint om 'job tokens' te kunnen aanmaken [untested]

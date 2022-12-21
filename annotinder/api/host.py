@@ -28,8 +28,9 @@ def get_host_info(db: Session = Depends(get_db), email: str = Query(None, descri
             data['user'] = dict(email=email, admin=u.is_admin, has_password=has_password)
     return data
 
-@app_annotator_host.post("setup")
-def setup(email: str,
+@app_annotator_host.post("/setup")
+def setup(username: str = Body(None, description="Username"),
+          email: str = Body(None, description="Email address"),
           password: str = Body(None, description="The new password"),
           db: Session = Depends(get_db)):
     """
@@ -38,5 +39,5 @@ def setup(email: str,
     users = db.query(User).count()
     if users > 0:
         raise HTTPException(status_code=404, detail="First admin already created")
-    crud_user.create_admin(db, email)
+    crud_user.register_user(db, username, email, password, admin=True)
     return Response(status_code=204)

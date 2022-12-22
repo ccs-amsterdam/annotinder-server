@@ -5,6 +5,7 @@ from distutils.core import setup
 setup(
     name="annotinder",
     version="0.4",
+    python_requires = '>=3.9',
     description="Backend for Annotinder",
     author="Kasper Welbers, Wouter van Atteveldt, Farzam Fanitabasi",
     author_email="kasperwelbers@gmail.com",

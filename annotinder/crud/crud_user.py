@@ -106,7 +106,7 @@ def get_users(db: Session, offset: int, n: int) -> list:
     if offset is not None: users.offset(offset)
     if n is not None: users.limit(n)
     return {
-        "users": [{"id": u.id, "is_admin": u.is_admin, "name": u.name} for u in users.all()],
+        "users": [{"id": u.id, "is_admin": u.is_admin, "name": u.name, "email": u.email} for u in users.all()],
         "total": total
     }
 

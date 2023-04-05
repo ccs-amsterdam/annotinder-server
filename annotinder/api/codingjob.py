@@ -230,11 +230,10 @@ def post_annotation(job_id: int,
     }
     """
     ann = crud_codingjob.get_unit_annotation(db, job_id, unit_id, coder.id)
+   
     if not ann:
         raise HTTPException(status_code=404)
     if ann.codingjob_id != job_id:
-        raise HTTPException(status_code=400)
-    if not annotation:
         raise HTTPException(status_code=400)
     report = crud_codingjob.set_annotation(
         db, ann=ann, coder=coder, annotation=annotation, status=status)

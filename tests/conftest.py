@@ -16,8 +16,7 @@ DB_HOST = os.getenv('POSTGRES_HOST')
 DB_NAME = os.getenv('POSTGRES_NAME') 
 DB_PW = os.getenv('POSTGRES_PASSWORD') 
 
-#DATABASE_URL = "sqlite:///./annotinder.db"
-DATABASE_URL = f"postgresql://{DB_NAME}:{DB_PW}@{DB_HOST}/annotinder"
+DATABASE_URL = "sqlite:///./test.db"
 
 engine = create_engine(
   DATABASE_URL, connect_args={}
@@ -26,19 +25,21 @@ engine = create_engine(
 if not database_exists(engine.url):
     create_database(engine.url)
 else:
-    # Connect the database if exists.
     engine.connect()
 
 TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def override_get_db():
+    db = TestSessionLocal()
     try:
-        db = TestSessionLocal()
+        print('open test db')
         yield db
     finally:
+        print('close test db')
         db.close()
 
 app.dependency_overrides[get_db] = override_get_db
+client = TestClient(app)
 
 @pytest.fixture(scope='session', autouse=True)
 def db():
@@ -63,6 +64,4 @@ def admin(db):
                                 email='admin@test.com', password='supersecret', admin=True)
     headers = {"Authorization": f"Bearer {get_token(u)}"}
     return dict(headers = headers, user=u, password='testpassword') 
-    
 
-client = TestClient(app)

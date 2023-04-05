@@ -32,8 +32,10 @@ Base.metadata.create_all(bind=engine)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_db():
+    db = SessionLocal()
     try:
-        db = SessionLocal()
+        print('open db')
         yield db
     finally:
+        print('close db')
         db.close()

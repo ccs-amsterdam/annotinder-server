@@ -5,6 +5,7 @@ def test_login(coders, admin):
     assert res.status_code == 200, res.text
 
     for coder in coders:
+        print(coder)
         res = client.get("/users/me/login", headers=coder['headers'])
         assert res.status_code == 200, res.text
 

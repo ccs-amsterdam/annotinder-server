@@ -115,7 +115,7 @@ def set_password(password: str = Body(None, description="The new password"),
                             "error": "Body needs to have password"})
 
     if not (email == 'me' or email == user.email):
-        check_admin()
+        check_admin(user)
     crud_user.change_password(db, email, password)
 
     return Response(status_code=204)

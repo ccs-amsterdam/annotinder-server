@@ -37,7 +37,6 @@ setup(
             'requests',
             'gunicorn',
             'pytest',
-            'codecov',
         ]
     },
 )

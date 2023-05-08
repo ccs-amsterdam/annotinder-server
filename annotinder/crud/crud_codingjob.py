@@ -37,6 +37,11 @@ def create_codingjob(db: Session, title: str, codebook: dict, jobsets: list, rul
 
 def add_units(db: Session, job: CodingJob, units: List[dict]) -> None:
     unit_list = []
+    ids = [u['id'] for u in units]
+    if len(set(ids)) < len(ids):
+        raise HTTPException(
+            status_code=400, detail='Unit ids must be unique')
+    
     for u in units:
         unit_type = u.get('type', 'code')
         if unit_type not in ['train', 'test', 'code', 'survey']:

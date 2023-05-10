@@ -228,7 +228,11 @@ def get_unit(db: Session, jobuser: JobUser, index: Optional[int]):
             raise HTTPException(status_code=404)
         else:
             return {'index': index}
-    unit = {'id': u.id, 'unit': u.unit, 'index': index}
+
+    # unit shouldn't actually return the type, because we don't want coders to be able to see if 
+    # it's a test unit. But it's needed for the frontend to know how to render the unit. Need to
+    # separate this logic in the new NextJS backend
+    unit = {'id': u.id, 'unit': u.unit, 'index': index, 'type': u.unit_type}
 
     a = get_unit_annotation(db, jobuser.codingjob_id, u.id, jobuser.user_id)
     if a:

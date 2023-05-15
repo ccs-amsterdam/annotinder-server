@@ -269,6 +269,6 @@ def get_debriefing(job_id: int,
     if debriefing is None:
         return None
 
-    debriefing['user_id'] = re.sub('jobuser_[0-9]+_', '', user.name)
+    debriefing['user_id'] = re.sub('jobuser_[0-9]+_', '', user.name) if user.name else "anonymous"
     return debriefing
 

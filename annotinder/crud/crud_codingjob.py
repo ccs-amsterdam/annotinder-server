@@ -277,6 +277,10 @@ def set_annotation(db: Session, ann: Annotation, coder: User, annotation: list, 
     # update annotation
     ann.annotation = annotation
     ann.modified = datetime.datetime.now()
+
+    # Now made it impossible for status to change back from done.
+    # this should actually be possible, but it breaks the index controller.
+    # should be fixed in the future
     if not ann.status == "DONE": 
         ann.status = status
         

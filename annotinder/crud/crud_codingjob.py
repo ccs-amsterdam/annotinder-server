@@ -229,6 +229,7 @@ def get_unit(db: Session, jobuser: JobUser, index: Optional[int]):
         else:
             return {'index': index}
 
+
     # unit shouldn't actually return the type, because we don't want coders to be able to see if 
     # it's a test unit. But it's needed for the frontend to know how to render the unit. Need to
     # separate this logic in the new NextJS backend
@@ -272,10 +273,12 @@ def set_annotation(db: Session, ann: Annotation, coder: User, annotation: list, 
         raise HTTPException(status_code=400, detail={
                             "error": "Status has to be 'DONE' or 'IN_PROGRESS'"})
 
+
     # update annotation
     ann.annotation = annotation
     ann.modified = datetime.datetime.now()
-    ann.status = status
+    if not ann.status == "DONE": 
+        ann.status = status
         
     report = {"damage": {}, "evaluation": {}}
     if ann.unit.conditionals is not None:       
@@ -292,7 +295,8 @@ def set_annotation(db: Session, ann: Annotation, coder: User, annotation: list, 
                 # not implemented. could block entire job? could be usefull for screening (e.g., minimum age).
                 status = 'RETRY'
                 None
-        ann.status = status
+        if not ann.status == 'DONE': 
+            ann.status = status
 
         # If damage changed, process the JobUser's total damage
         if ann.damage != damage:
@@ -306,6 +310,7 @@ def set_annotation(db: Session, ann: Annotation, coder: User, annotation: list, 
             total_damage = update_damage(db, jobuser, jobset.id, coder.id)
             report['damage'] = create_damage_report(damage, total_damage, jobset.rules)
    
+    print(ann.status)
     db.commit()
  
     return report

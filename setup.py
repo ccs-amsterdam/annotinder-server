@@ -30,6 +30,7 @@ setup(
         'authlib',
         'bcrypt',
         'email_validator',
+        'cython<3'
     ],
     extras_require={
         'dev': [
